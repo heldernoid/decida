@@ -4,6 +4,10 @@ Decida is a local runtime for **System One models**: models that read a **state*
 
 It loads models from Hugging Face, serves them over one REST API and an MCP server, and comes with a testbench of small games and tools for seeing how a model really behaves.
 
+![The Decida home page: one request with a choice, a score and a yes/no question, answered by DecidaBERT-large in one forward pass](assets/home.png)
+
+*A real response from a local server (DecidaBERT-large on an Apple GPU), not a mock-up.*
+
 | question type | you give | you get back |
 |---|---|---|
 | `choice` | 2 to 255 options, each with a description | a probability for every option |
