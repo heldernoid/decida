@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decida bench: Flappy</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2024%2024%22%3E%3Crect%20x=%221%22%20y=%2216%22%20width=%224%22%20height=%225%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%227%22%20y=%223%22%20width=%224%22%20height=%2218%22%20rx=%221%22%20fill=%22%233a34d2%22/%3E%3Crect%20x=%2213%22%20y=%2213%22%20width=%224%22%20height=%228%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%2219%22%20y=%2218%22%20width=%224%22%20height=%223%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../common/bench.css">
+<!-- Design adapted from the Flappy demo in https://github.com/wdobry/laya-playground (MIT); see THIRD_PARTY.md -->
+<style>
+#cv{width:100%;height:auto;display:block;border-radius:12px;border:1px solid var(--line)}
+.reads,.thr{max-width:calc(var(--stagevh, 84) * 1vh * var(--aspect, 1.5));margin-left:auto;margin-right:auto}
+.thr input[type=range]{max-width:none}
+.controls{justify-content:center}
+.reads{margin-top:10px;padding:10px 14px;border-radius:10px;background:var(--surface);border:1px solid var(--line);font-size:14px;min-height:64px}
+.reads .sent{color:var(--ink);font-size:16px}
+.reads .why{font:13px var(--mono);color:var(--ink2);margin-top:4px}
+.reads .act{display:inline-block;font:700 12px var(--mono);padding:2px 8px;border-radius:6px;margin-right:8px;background:var(--acc);color:var(--acc-ink)}
+.reads .act.glide{background:var(--ink3)}
+.thr{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:13px;color:var(--ink2)}
+.thr input[type=range]{flex:1;max-width:340px}
+.thr b{font-family:var(--mono);color:var(--ink)}
+</style>
+</head>
+<body>
+<header><a href="/">&larr; Decida</a><h1>Flappy</h1><span style="color:var(--ink3);font-size:13px">the model says where the bird is; the game flaps when P(below) clears the threshold</span></header>
+<main class="wide">
+<section class="panel" style="--aspect:1.5;--stagevh:66">
+  <div class="stage" id="stage"><canvas id="cv" width="720" height="480" aria-label="Flappy game"></canvas></div>
+  <div class="reads" id="reads"><span class="sent">Press Start. Each tick the game puts the bird's height into words and asks one question.</span></div>
+  <div class="thr"><label for="thr">Flap when the probability is above</label><input type="range" id="thr" min="0.05" max="0.95" step="0.05" value="0.5"><b id="thrv">0.50</b></div>
+  <div class="controls">
+    <label>Model <select id="model"></select></label>
+    <label title="words: the situation in words (default). numbers: bird and gap altitude as numbers. action: ask what to do instead of where the bird is.">Variant <select id="variant"><option value="words" selected>words: where is the bird?</option><option value="numbers">numbers: altitudes as digits</option><option value="action">action: what should it do?</option></select></label>
+    <label title="A number replays that exact course; random picks a new one every run">Course <input type="text" id="seed" value="random" size="8"></label>
+    <label title="Ask the model every N frames (60 frames per second)">Ask every <input type="number" id="every" value="3" min="1" max="30"> frames</label>
+    <label title="Pause the game until each answer arrives: takes latency out of the picture"><input type="checkbox" id="lockstep"> Lockstep</label>
+    <label>Seconds <input type="number" id="seconds" value="60" min="5" max="600"></label>
+    <button id="go">Start run</button>
+    <button id="fs" class="ghost fsbtn" type="button" title="Show the stage full screen (Esc to leave)">Full screen</button>
+  </div>
+  <div id="msg"></div>
+  <div id="report"></div>
+  <p class="note">The <b>words</b> variant follows the Laya playground's Flappy: the game measures, the model only reads ("the bird is a little below the gap") and answers where the bird is. Encoders do this well. <b>numbers</b> and <b>action</b> show what goes wrong: they cannot compare digits, and asking what to do comes out inverted.</p>
+</section>
+<section class="panel" id="side"></section>
+</main>
+<script type="module">
+import * as F from './game.js';
+import { pickSeed } from '../common/rng.js';
+import * as M from '../common/monitor.js';
+const { esc, pct, stat } = M;
+const $ = s => document.querySelector(s);
+const QP = new URLSearchParams(location.search);
+$('#side').innerHTML = M.panelHTML();
+const VW = 720, VH = 480, DPR = Math.min(2, window.devicePixelRatio || 1), UX = 40, BIRD_X = 170, GROUND = 440;
+const cv = $('#cv'), ctx = cv.getContext('2d');
+let K = DPR; cv.width = Math.round(VW * K); cv.height = Math.round(VH * K);
+function fit() { const want = Math.max(1, (cv.clientWidth || VW) * DPR / VW); if (Math.abs(want - K) / K < 0.06) return; K = want; cv.width = Math.round(VW * K); cv.height = Math.round(VH * K); }
+if (window.ResizeObserver) new ResizeObserver(fit).observe(cv);
+const say = (t, err) => { const m = $('#msg'); m.textContent = t || ''; m.className = t ? 'on' + (err ? ' err' : '') : ''; };
+const MAX_INFLIGHT = 2;
+let S = null;
+
+async function loadModels() {
+  try {
+    const d = await (await fetch('/v1/models')).json();
+    const ready = d.models.filter(m => m.status === 'ready' || m.status === 'registered');
+    $('#model').innerHTML = ready.map(m => `<option value="${esc(m.name)}">${esc(m.name)} (${m.backend})</option>`).join('');
+    const want = QP.get('model') || d.default;
+    if (ready.some(m => m.name === want)) $('#model').value = want;
+    if (!ready.length) say('No models loaded. Start the server with --model.', true);
+  } catch (e) { say('Cannot reach the Decida server: ' + e.message, true); }
+}
+
+function newRun() {
+  const seed = pickSeed($('#seed').value);
+  return { seed, game: F.newGame(seed), frames: 0, running: false, finished: false, inflight: 0, sinceAsk: 999, lockWait: false, wantFlap: false, pending: [],
+    model: $('#model').value, variant: $('#variant').value, every: Math.max(1, +$('#every').value || 3), lockstep: $('#lockstep').checked, runFrames: Math.round(60 * (+$('#seconds').value || 60)),
+    lat: [], counts: {}, tokens: 0, done: 0, right: 0, oracleMatch: 0, flaps: 0, stale: 0, errors: 0, ageSum: 0, last: null, cutTurns: 0, cutOptions: 0, stateCut: false, t0: 0 };
+}
+
+async function ask() {
+  const g = S.game, obs = F.observe(g, S.variant), truth = F.classOf(F.offset(g)), oracle = F.oracleFlap(g), frame = S.frames, sentAt = performance.now();
+  S.inflight++; S.sinceAsk = 0; if (S.lockstep) S.lockWait = true;
+  try {
+    const r = await fetch('/v1/systemone', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: S.model, ...obs }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error((j.error && j.error.message) || r.statusText);
+    S.pending.push({ frame, ms: performance.now() - sentAt, j, obs, truth, oracle });
+  } catch (e) { S.errors++; say('Request failed: ' + e.message, true); if (S.errors >= 3) finish('errors'); }
+  finally { S.inflight--; if (S.lockstep) S.lockWait = false; }
+}
+
+function land() { // apply arrived answers at the start of a frame
+  for (const p of S.pending.splice(0)) {
+    const thr = +$('#thr').value, d = F.decide(p.j.answers, thr, S.variant), key = S.variant === 'action' ? 'act' : 'where', a = p.j.answers[key];
+    S.lat.push(p.ms); S.done++; S.tokens += (p.j.usage && p.j.usage.input_tokens) || 0; S.ageSum += S.frames - p.frame;
+    const cut = p.j.x_decida && p.j.x_decida.truncation;
+    if (cut && (cut.options_cut || cut.state_cut)) { S.cutTurns++; S.cutOptions = Math.max(S.cutOptions, cut.options_cut); S.stateCut = S.stateCut || cut.state_cut; }
+    if (S.variant !== 'action' && a.choice === p.truth) S.right++;
+    if (d.flap === p.oracle) S.oracleMatch++;
+    S.counts[d.label] = (S.counts[d.label] || 0) + 1;
+    if (d.flap) { S.wantFlap = true; S.flaps++; }
+    S.last = { probs: a.probabilities, choice: a.choice, confidence: a.confidence, ms: p.ms, oracle: S.variant === 'action' ? (p.oracle ? 'flap' : 'glide') : p.truth, subject: p.obs.state, request: p.obs, raw: p.j };
+    S.decision = { ...d, state: p.obs.state };
+  }
+}
+
+function tick() {
+  land();
+  if (S.sinceAsk >= S.every && (S.lockstep ? S.inflight === 0 : S.inflight < MAX_INFLIGHT)) ask();
+  if (S.lockstep && S.lockWait) return; // freeze the world until the answer lands
+  S.sinceAsk++;
+  F.step(S.game, S.wantFlap); S.wantFlap = false; S.frames++;
+  if (S.frames >= S.runFrames) finish('done');
+}
+
+function finish(why) {
+  if (!S || S.finished) return;
+  S.finished = true; S.running = false; $('#go').textContent = 'Start run';
+  const g = S.game, p50 = pct(S.lat, .5), p95 = pct(S.lat, .95), r = $('#report'); r.className = 'on';
+  const perception = S.variant === 'action' ? '' : ` · perception accuracy ${S.done ? Math.round(100 * S.right / S.done) : 0}%`;
+  r.innerHTML = `<b>${why === 'errors' ? 'Stopped: request errors' : why === 'stopped' ? 'Stopped' : `Best ${g.best} pillars, ${g.crashes} crash${g.crashes === 1 ? '' : 'es'} in ${(S.frames / 60).toFixed(0)} s`}</b><br>
+    model <b>${esc(S.model)}</b> · ${S.variant} · threshold ${(+$('#thr').value).toFixed(2)} · course ${S.seed} · ${S.lockstep ? 'lockstep' : 'real time'}<br>
+    ${S.done} decisions${perception} · matches the truth-reader ${S.done ? Math.round(100 * S.oracleMatch / S.done) : 0}% · ${S.flaps} flaps · answers ${(S.ageSum / Math.max(1, S.done)).toFixed(1)} frames old on average<br>
+    latency p50 ${p50 == null ? 'n/a' : p50.toFixed(0)} ms, p95 ${p95 == null ? 'n/a' : p95.toFixed(0)} ms`;
+}
+
+function render() {
+  const g = S.game, p50 = pct(S.lat, .5), p95 = pct(S.lat, .95), secs = Math.max(.001, S.frames / 60);
+  $('#stats').innerHTML = [stat('Pillars', g.score), stat('Best', g.best), stat('Crashes', g.crashes, g.crashes > 0),
+    stat('Perception', S.variant === 'action' || !S.done ? '–' : Math.round(100 * S.right / S.done) + '%'), stat('Matches truth-reader', S.done ? Math.round(100 * S.oracleMatch / S.done) + '%' : '–'), stat('Decisions/s', S.done ? (S.done / secs).toFixed(1) : '–'),
+    stat('Latency p50', p50 == null ? '–' : p50.toFixed(0) + ' ms'), stat('Latency p95', p95 == null ? '–' : p95.toFixed(0) + ' ms', p95 > 150), stat('Answer age', S.done ? (S.ageSum / S.done).toFixed(1) + ' fr' : '–')].join('');
+  M.update({ lat: S.lat, tokens: S.tokens, counts: S.counts, countsLabel: 'decisions', done: S.done, last: S.last, cut: { turns: S.cutTurns, options: S.cutOptions, state: S.stateCut } });
+  const d = S.decision;
+  if (d) $('#reads').innerHTML = `<div class="sent">${esc(d.state)}</div><div class="why"><span class="act ${d.flap ? '' : 'glide'}">${d.label}</span>${esc(d.why)}</div>`;
+}
+
+// ---------- drawing ----------
+const px = x => BIRD_X + x * UX, py = y => GROUND - y * UX;
+function cloud(x, y, s) { ctx.beginPath(); for (const [dx, dy, r] of [[0, 0, 22], [22, -8, 26], [50, 0, 22], [26, 8, 20]]) { ctx.moveTo(x + (dx + r) * s, y + dy * s); ctx.arc(x + dx * s, y + dy * s, r * s, 0, 7); } ctx.fill(); }
+
+function draw(now) {
+  ctx.setTransform(cv.width / VW, 0, 0, cv.width / VW, 0, 0);
+  const g = S.game, sky = ctx.createLinearGradient(0, 0, 0, GROUND); sky.addColorStop(0, '#5db8f5'); sky.addColorStop(1, '#d9f2ff');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, VW, VH);
+  ctx.fillStyle = 'rgba(255,240,170,.9)'; ctx.beginPath(); ctx.arc(600, 90, 34, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.85)'; for (let i = 0; i < 4; i++) cloud(((i * 230 - g.t * 14) % 920 + 920) % 920 - 120, 70 + (i * 53) % 110, .8 + (i % 2) * .3);
+  for (const [amp, h, col, sp] of [[26, 300, '#9fd8b2', 6], [18, 340, '#7cc79a', 14]]) { ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(0, GROUND); for (let x = 0; x <= VW; x += 8) ctx.lineTo(x, h + Math.sin((x + g.t * sp * 6) / 70) * amp + Math.sin((x + g.t * sp * 3) / 33) * amp * .35); ctx.lineTo(VW, GROUND); ctx.fill(); }
+  for (const p of g.pillars) { // pipes with lips
+    const x0 = px(p.x - F.PW / 2), w = F.PW * UX, top = py(p.c + F.GAP / 2), bot = py(p.c - F.GAP / 2);
+    if (x0 > VW + 40 || x0 + w < -40) continue;
+    const grad = ctx.createLinearGradient(x0, 0, x0 + w, 0); grad.addColorStop(0, '#3fa34d'); grad.addColorStop(.45, '#7edb6f'); grad.addColorStop(1, '#2f8a3e');
+    ctx.fillStyle = grad; ctx.fillRect(x0, 0, w, top); ctx.fillRect(x0, bot, w, GROUND - bot);
+    ctx.fillRect(x0 - 5, top - 20, w + 10, 20); ctx.fillRect(x0 - 5, bot, w + 10, 20);
+    ctx.strokeStyle = 'rgba(0,50,10,.5)'; ctx.lineWidth = 2; ctx.strokeRect(x0, -2, w, top + 2); ctx.strokeRect(x0, bot, w, GROUND - bot); ctx.strokeRect(x0 - 5, top - 20, w + 10, 20); ctx.strokeRect(x0 - 5, bot, w + 10, 20);
+  }
+  const t = F.target(g); // faint marker at the middle of the next gap: what the model has to notice
+  if (t) { ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.setLineDash([5, 6]); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(px(t.x) - 70, py(t.c)); ctx.lineTo(px(t.x) + 26, py(t.c)); ctx.stroke(); ctx.setLineDash([]); }
+  ctx.fillStyle = '#7a5230'; ctx.fillRect(0, GROUND, VW, VH - GROUND); ctx.fillStyle = '#5cbf4a'; ctx.fillRect(0, GROUND, VW, 12);
+  ctx.fillStyle = 'rgba(0,0,0,.14)'; for (let x = -((g.t * F.SPEED * UX) % 24); x < VW; x += 24) ctx.fillRect(x, GROUND + 12, 12, 8);
+  // the bird
+  const y = py(g.y), tilt = Math.max(-.6, Math.min(.9, -g.vy * .07)), blink = g.dead && Math.floor(g.dead * 12) % 2;
+  if (!blink) {
+    ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.beginPath(); ctx.ellipse(BIRD_X, GROUND + 6, Math.max(6, 20 - g.y * 1.2), 4, 0, 0, 7); ctx.fill();
+    ctx.save(); ctx.translate(BIRD_X, y); ctx.rotate(tilt);
+    const body = ctx.createRadialGradient(-6, -8, 2, 0, 0, 22); body.addColorStop(0, '#ffe27a'); body.addColorStop(1, g.dead ? '#e0603c' : '#f0a81c');
+    ctx.fillStyle = body; ctx.strokeStyle = '#8a5a0a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(0, 0, 21, 16, 0, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#f5b83a'; ctx.beginPath(); ctx.ellipse(-7, 4 - Math.sin(g.wing * Math.PI) * 10, 12, 7, -.2 + Math.sin(g.wing * Math.PI) * .7, 0, 7); ctx.fill(); ctx.stroke(); // wing
+    ctx.fillStyle = '#ff7a2a'; ctx.beginPath(); ctx.moveTo(17, -2); ctx.lineTo(30, 2); ctx.lineTo(17, 7); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(10, -6, 6, 0, 7); ctx.fill(); ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(12, -6, 2.6, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+  ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.font = '700 34px ui-sans-serif,system-ui'; ctx.textAlign = 'center'; ctx.fillText(String(g.score), VW / 2, 56);
+  if (g.dead) { ctx.font = '700 22px ui-sans-serif,system-ui'; ctx.fillStyle = 'rgba(200,30,30,.85)'; ctx.fillText('crashed', VW / 2, 92); }
+}
+
+let acc = 0, prev = 0;
+function frame(t) {
+  requestAnimationFrame(frame);
+  if (S.running && !S.finished) { acc += Math.min(100, t - prev); while (acc >= 1000 / 60 && S.running) { acc -= 1000 / 60; tick(); } render(); }
+  prev = t; draw(t);
+}
+
+$('#go').addEventListener('click', () => {
+  if (S && S.running) { finish('stopped'); return; }
+  if (!$('#model').value) { say('Load a model first.', true); return; }
+  say(''); $('#report').className = ''; M.resetMonitor(); S = newRun(); S.running = true; S.t0 = performance.now(); acc = 0; $('#go').textContent = 'Stop';
+});
+$('#thr').addEventListener('input', () => { $('#thrv').textContent = (+$('#thr').value).toFixed(2); });
+for (const id of ['seed', 'variant', 'every', 'seconds', 'thr']) if (QP.get(id)) { $('#' + id).value = QP.get(id); }
+if (QP.get('lockstep')) $('#lockstep').checked = QP.get('lockstep') === '1';
+$('#thrv').textContent = (+$('#thr').value).toFixed(2);
+$('#fs').addEventListener('click', () => { const st = $('#stage'); if (document.fullscreenElement) document.exitFullscreen(); else if (st.requestFullscreen) st.requestFullscreen(); });
+window.__flappy = { get S() { return S; }, F };
+S = newRun(); render(); requestAnimationFrame(frame);
+loadModels().then(() => { if (QP.get('auto')) $('#go').click(); });
+</script>
+</body>
+</html>

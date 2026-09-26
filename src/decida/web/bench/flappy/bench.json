@@ -1,0 +1,1 @@
+{"title": "Flappy", "description": "The bird's height is put into words and the model is asked where the bird is relative to the gap; the game flaps when P(below) clears a threshold you can slide. Variants show what happens with numbers, or when asking what to do.", "tags": ["real-time", "games", "perception"]}

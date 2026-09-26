@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decida bench: T-Rex runner</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2024%2024%22%3E%3Crect%20x=%221%22%20y=%2216%22%20width=%224%22%20height=%225%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%227%22%20y=%223%22%20width=%224%22%20height=%2218%22%20rx=%221%22%20fill=%22%233a34d2%22/%3E%3Crect%20x=%2213%22%20y=%2213%22%20width=%224%22%20height=%228%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%2219%22%20y=%2218%22%20width=%224%22%20height=%223%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../common/bench.css">
+</head>
+<body>
+<header><a href="/">&larr; Decida</a><h1>T-Rex runner</h1><span style="color:var(--ink3);font-size:13px">the model chooses every few frames; a physics planner labels each option safe or unsafe</span></header>
+<main class="wide">
+<section class="panel" style="--aspect:4;--stagevh:80">
+  <div class="stage" id="stage"><canvas id="cv" style="image-rendering:auto" width="1800" height="450" aria-label="Dino game"></canvas></div>
+  <div class="controls">
+    <label>Model <select id="model"></select></label>
+    <label title="A number replays that exact game; random picks a new one every run">Course <input type="text" id="seed" value="random" size="8"></label>
+    <label title="Replace an answer the planner labels unsafe with the best safe action"><input type="checkbox" id="shield" checked> Shield</label>
+    <label title="Pause the game until each answer arrives (takes latency out of the picture)"><input type="checkbox" id="lockstep"> Lockstep</label>
+    <label title="How much the option text gives away">Hints <select id="hints"><option value="full">full (safe/unsafe + Best)</option><option value="nobest">safe/unsafe only</option><option value="none">none (judge from distance)</option></select></label>
+    <label title="Ask the model every N frames">Ask every <input type="number" id="every" value="6" min="1" max="60"> frames</label>
+    <button id="go">Start run</button>
+    <button id="fs" class="ghost fsbtn" type="button" title="Show the stage full screen (Esc to leave)">Full screen</button>
+  </div>
+  <div id="msg"></div>
+  <div id="report"></div>
+  <p class="note">Shield on: the survival number measures model plus shield. Shield off: the model's answer stands, so it measures the model. Compare agreement and unsafe picks in both cases.</p>
+</section>
+<section class="panel" id="side"></section>
+</main>
+<script type="module">
+import * as G from './game.js';
+import { drawScene } from './scene.js';
+import { pickSeed } from '../common/rng.js';
+import * as M from '../common/monitor.js';
+const { css, esc, pct, stat } = M;
+const $ = s => document.querySelector(s);
+$('#side').innerHTML = M.panelHTML();
+const cv = $('#cv'), ctx = cv.getContext('2d');
+const QP = new URLSearchParams(location.search);
+const RUN_FRAMES = Math.round(60 * (+QP.get('seconds') || 60)), STALE = 45, MAX_INFLIGHT = 3;
+
+let S = null; // run state
+const say = (t, err) => { const m = $('#msg'); m.textContent = t || ''; m.className = t ? 'on' + (err ? ' err' : '') : ''; };
+
+async function loadModels() {
+  try {
+    const d = await (await fetch('/v1/models')).json();
+    const ready = d.models.filter(m => m.status === 'ready' || m.status === 'registered');
+    $('#model').innerHTML = ready.map(m => `<option value="${esc(m.name)}">${esc(m.name)} (${m.backend})</option>`).join('');
+    const want = new URLSearchParams(location.search).get('model') || d.default;
+    if (ready.some(m => m.name === want)) $('#model').value = want;
+    if (!ready.length) say('No models loaded. Start the server with --model.', true);
+  } catch (e) { say('Cannot reach the Decida server: ' + e.message, true); }
+}
+
+function newRun() {
+  const seed = pickSeed($('#seed').value);
+  return { seed, game: G.newGame(seed), frames: 0, deaths: 0, crashPause: 0, inflight: 0, lockWait: false,
+    lat: [], counts: {}, tokens: 0, cutTurns: 0, cutOptions: 0, stateCut: false, sent: 0, done: 0, agree: 0, unsafeTop: 0, saves: 0, stale: 0, errors: 0, pending: [], sinceAsk: 999,
+    model: $('#model').value, shield: $('#shield').checked, lockstep: $('#lockstep').checked, hints: $('#hints').value,
+    every: Math.max(1, +$('#every').value || 6), running: true, last: null, dist: 0, hist: [], deathLog: [] };
+}
+
+function latFrames() { if (S.lockstep) return 0; const p = pct(S.lat, .95); return p == null ? 6 : Math.max(2, Math.min(40, Math.round(p / (1000 / 60)))); }
+
+async function ask() {
+  const { request, plan } = G.toRequest(S.game, latFrames(), S.every, S.hints);
+  const sentAt = performance.now(), frame = S.frames;
+  S.inflight++; S.sent++; S.sinceAsk = 0;
+  if (S.lockstep) S.lockWait = true;
+  try {
+    const r = await fetch('/v1/systemone', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: S.model, ...request }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error((j.error && j.error.message) || r.statusText);
+    const a = j.answers.action;
+    const ms = performance.now() - sentAt;
+    const cut = j.x_decida && j.x_decida.truncation;
+    if (cut && (cut.options_cut || cut.state_cut)) { S.cutTurns++; S.cutOptions = Math.max(S.cutOptions, cut.options_cut); S.stateCut = S.stateCut || cut.state_cut; }
+    S.pending.push({ frame, ms, a, plan, request, ans: a, raw: j, tokens: (j.usage && j.usage.input_tokens) || 0 });
+  } catch (e) { S.errors++; say('Request failed: ' + e.message, true); if (S.errors >= 3) finish('errors'); }
+  finally { S.inflight--; if (S.lockstep) S.lockWait = false; }
+}
+
+function land() { // apply arrived answers at the start of a frame
+  for (const p of S.pending.splice(0)) {
+    S.lat.push(p.ms); S.done++; S.tokens += p.tokens;
+    const age = S.frames - p.frame;
+    const top = p.a.choice;
+    if (p.plan.best === top) S.agree++;
+    if (!p.plan.safe.includes(top)) S.unsafeTop++;
+    S.counts[top] = (S.counts[top] || 0) + 1;
+    S.last = { probs: p.a.probabilities, choice: top, confidence: p.a.confidence, ms: p.ms, oracle: p.plan.best, request: p.request, raw: p.raw };
+    if (!S.lockstep && age > STALE) { S.stale++; continue; } // too old to act on
+    let action = top;
+    if (S.shield) {
+      const now = G.plan(S.game, 0, S.every);
+      if (!now.safe.includes(action)) { action = now.best; S.saves++; }
+    }
+    G.applyAction(S.game, action);
+    S.hist.push({ f: S.frames, sentF: p.frame, age, top, action, best: p.plan.best, scores: p.plan.scores, wait: p.plan.wait, y: +S.game.y.toFixed(1), tgt: p.plan.target ? G.describe(p.plan.target) + '@' + Math.round(p.plan.target.x - 94) : null });
+    S.hist.splice(0, Math.max(0, S.hist.length - 12));
+  }
+}
+
+function tick() {
+  if (S.crashPause > 0) { if (--S.crashPause === 0) { S.game = G.newGame(S.seed * 1000 + S.deaths); S.pending = []; } S.frames++; return; }
+  land();
+  if (S.sinceAsk >= S.every && (S.lockstep ? S.inflight === 0 : S.inflight < MAX_INFLIGHT)) ask();
+  if (S.lockstep && S.lockWait) return; // freeze the world until the answer lands
+  S.sinceAsk++;
+  G.step(S.game);
+  S.frames++;
+  if (S.game.crashed) { S.deathLog.push({ f: S.frames, y: S.game.y, spd: S.game.speed, obs: S.game.obstacles.slice(0, 2).map(o => G.describe(o) + '@' + Math.round(o.x - 94)), hist: S.hist.slice(-6) }); S.deaths++; S.crashPause = 60; S.dist += S.game.dist; }
+  if (S.frames >= RUN_FRAMES) finish('done');
+}
+
+function finish(why) {
+  if (!S || !S.running) return;
+  S.running = false; $('#go').textContent = 'Start run';
+  const r = $('#report'); r.className = 'on';
+  const p50 = pct(S.lat, .5), p95 = pct(S.lat, .95);
+  const survived = S.deaths === 0 && why === 'done';
+  r.innerHTML = `<b>${survived ? `Survived ${RUN_FRAMES / 60} s with zero deaths` : why === 'stopped' ? 'Stopped' : why === 'errors' ? 'Stopped: request errors' : `${S.deaths} death${S.deaths === 1 ? '' : 's'} in ${(S.frames / 60).toFixed(0)} s`}</b><br>
+    model <b>${esc(S.model)}</b> · course ${S.seed} · shield ${S.shield ? 'on' : 'off'} · hints ${S.hints} · ${S.lockstep ? 'lockstep' : 'real time'}<br>
+    ${S.done} decisions · agreement with planner ${S.done ? Math.round(100 * S.agree / S.done) : 0}% · unsafe top picks ${S.unsafeTop} · shield saves ${S.saves} · stale answers dropped ${S.stale}<br>
+    latency p50 ${p50 == null ? 'n/a' : p50.toFixed(0)} ms, p95 ${p95 == null ? 'n/a' : p95.toFixed(0)} ms`;
+}
+
+function renderStats() {
+  const p50 = pct(S.lat, .5), p95 = pct(S.lat, .95);
+  $('#stats').innerHTML = [
+    stat('Time', (S.frames / 60).toFixed(1) + ' s'), stat('Deaths', S.deaths, S.deaths > 0),
+    stat('Decisions', S.done), stat('Agreement', S.done ? Math.round(100 * S.agree / S.done) + '%' : '–'),
+    stat('Unsafe picks', S.unsafeTop, S.unsafeTop > 0), stat('Shield saves', S.saves),
+    stat('Latency p50', p50 == null ? '–' : p50.toFixed(0) + ' ms'), stat('Latency p95', p95 == null ? '–' : p95.toFixed(0) + ' ms', p95 > 150),
+    stat('In flight', S.inflight), stat('Stale', S.stale, S.stale > 0)].join('');
+  M.update({ lat: S.lat, tokens: S.tokens, counts: S.counts, done: S.done, last: S.last, cut: { turns: S.cutTurns, options: S.cutOptions, state: S.stateCut } });
+}
+
+// Sprites are lists of [x, y, w, h] rectangles in sprite pixels (2x scale for the dino, 1x for obstacles).
+const SCALE = 3; // backing store is 3x the game's 600x150 units so the vector art stays sharp
+cv.width = G.W * SCALE; cv.height = G.H * SCALE;
+function draw() {
+  const g = S ? S.game : G.newGame(1);
+  ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
+  const crash = S && S.crashPause > 0;
+  drawScene(ctx, g, { dead: !!crash, flash: crash ? (Math.floor(S.crashPause / 6) % 2 ? 0 : 1) : 0 });
+}
+
+let acc = 0, prev = 0;
+function loop(t) {
+  requestAnimationFrame(loop);
+  if (S && S.running) {
+    acc += Math.min(100, t - prev);
+    while (acc >= 1000 / 60) { acc -= 1000 / 60; if (S.running) tick(); }
+    renderStats();
+  }
+  prev = t; draw();
+}
+
+$('#go').addEventListener('click', () => {
+  if (S && S.running) { finish('stopped'); return; }
+  if (!$('#model').value) { say('Load a model first.', true); return; }
+  say(''); $('#report').className = ''; M.resetMonitor(); S = newRun(); acc = 0; $('#go').textContent = 'Stop';
+});
+if (QP.get('seed')) $('#seed').value = QP.get('seed');
+if (QP.get('shield')) $('#shield').checked = QP.get('shield') === '1';
+if (QP.get('lockstep')) $('#lockstep').checked = QP.get('lockstep') === '1';
+if (QP.get('hints')) $('#hints').value = QP.get('hints');
+if (QP.get('every')) $('#every').value = QP.get('every');
+$('#fs').addEventListener('click', () => { const st = $('#stage'); if (document.fullscreenElement) document.exitFullscreen(); else if (st.requestFullscreen) st.requestFullscreen(); });
+window.__dino = { get S() { return S; }, G }; // for automated tests
+loadModels().then(() => { requestAnimationFrame(loop); if (QP.get('auto')) $('#go').click(); });
+</script>
+</body>
+</html>

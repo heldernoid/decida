@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decida bench: Colour palette</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2024%2024%22%3E%3Crect%20x=%221%22%20y=%2216%22%20width=%224%22%20height=%225%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%227%22%20y=%223%22%20width=%224%22%20height=%2218%22%20rx=%221%22%20fill=%22%233a34d2%22/%3E%3Crect%20x=%2213%22%20y=%2213%22%20width=%224%22%20height=%228%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%2219%22%20y=%2218%22%20width=%224%22%20height=%223%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../common/bench.css">
+<!-- The idea follows Matt DesLauriers' "does Jev understand colour?" demo: https://x.com/mattdesl/status/2100899669802963060 (no code used) -->
+<style>
+.card{background:#fff;color:#111;border-radius:14px;overflow:hidden;border:1px solid var(--line);display:flex;flex-direction:column;height:clamp(520px,66vh,820px);box-shadow:0 12px 30px -18px rgba(0,0,0,.4)}
+.top{flex:1.15;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:0 6%}
+#q{width:100%;max-width:min(860px,90%);border:0;border-bottom:2px solid #111;background:transparent;color:#111;font:500 clamp(26px,3.2vw,44px) ui-monospace,SFMono-Regular,Menlo,monospace;text-align:center;padding:8px 4px;outline:none}
+#q::placeholder{color:#b4b4b4}
+.chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+.chip{font:clamp(12px,1vw,14px) var(--mono);color:#555;background:#f2f2f2;border:1px solid #e3e3e3;border-radius:999px;padding:3px 10px;cursor:pointer}
+.chip:hover{background:#e9e9ff;border-color:#c9c9f5}
+.stripes{position:relative;flex:1;border-top:1px solid #eee;background:#fafafa}
+.stripe{position:absolute;top:0;bottom:0;width:0;left:0;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;padding:0;font:600 clamp(12px,1.2vw,17px) var(--mono);white-space:nowrap;
+  transition:left .5s cubic-bezier(.2,.8,.2,1),width .5s cubic-bezier(.2,.8,.2,1)}
+.stripe .lab{margin:0 0 10px 10px}
+.stripe small{font-weight:500;opacity:.8;display:block}
+.hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#b0b0b0;font:14px var(--mono);pointer-events:none}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:12px;font:12.5px var(--mono);color:var(--ink2)}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px;border:1px solid rgba(0,0,0,.15)}
+
+.card:fullscreen{height:100vh;border-radius:0;border:0}
+.credit{font-size:12px;color:var(--ink3,#7a8699);margin:10px 0 0}.credit a{color:inherit;text-decoration:underline}
+</style>
+</head>
+<body>
+<header><a href="/">&larr; Decida</a><h1>Colour palette</h1><span style="color:var(--ink3);font-size:13px">type anything; the model says which colours express it, and how much of each</span></header>
+<main class="wide">
+<section class="panel">
+  <div class="card stage" id="stage">
+    <div class="top">
+      <input id="q" type="text" placeholder="type something: tomato, neon tokyo, 80s disco…" autocomplete="off" spellcheck="false" autofocus>
+      <div class="chips" id="chips"></div>
+    </div>
+    <div class="stripes" id="stripes"><div class="hint" id="hint">type above to see its colours</div></div>
+  </div>
+  <div class="legend" id="legend"></div>
+  <div id="info" class="cut" style="margin-top:10px"></div>
+  <div class="controls">
+    <label>Model <select id="model"></select></label>
+    <label title="auto: one question for encoder models, four rotated option orders averaged for language models (they read option letters and favour the first ones)">Method <select id="variant"><option value="auto" selected>auto</option><option value="single">one question</option><option value="rotated">averaged over 4 rotated orders</option></select></label>
+    <button id="fs" class="ghost fsbtn" type="button" title="Show the stage full screen (Esc to leave)">Full screen</button>
+    <label title="Raise the probabilities to a power so a hesitant model reads decisively. The order never changes. auto: the gentlest contrast that lets the top colour reach 50%.">Contrast <select id="gamma"><option value="auto" selected>auto</option><option value="1">1 (raw)</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="6">6</option></select></label>
+    <label title="Wait this long after you stop typing before asking">Pause <input type="number" id="debounce" value="180" min="0" max="2000" step="20"> ms</label>
+  </div>
+  <div id="msg"></div>
+  <p class="note">The stripes are the model's probabilities for the question "which colour does this make you think of?". Every colour is described by what it looks like in real life ("red, the colour of tomatoes, fire trucks, roses, blood"): the description is what the model matches your text against, so a short list of described colours works far better than a long list of bare names. Language models read options as letters and favour the first ones, so for them the question is asked four times with the list rotated and the answers averaged. Small models are often right about which colours belong but unsure how much of each, so \"contrast\" sharpens the stripes (the order never changes). Requests are coalesced while you type, and only the newest answer is shown.</p>
+  <p class="credit">Idea: Matt DesLauriers (<a href="https://x.com/mattdesl/status/2100899669802963060" target="_blank" rel="noopener">@mattdesl</a>), "does Jev understand colour?". The design and code are our own.</p>
+</section>
+<section class="panel" id="side"></section>
+</main>
+<script type="module">
+import * as C from './palette.js';
+import * as M from '../common/monitor.js';
+const { esc, pct, stat } = M;
+const $ = s => document.querySelector(s);
+const QP = new URLSearchParams(location.search);
+$('#side').innerHTML = M.panelHTML();
+const say = (t, err) => { const m = $('#msg'); m.textContent = t || ''; m.className = t ? 'on' + (err ? ' err' : '') : ''; };
+const EXAMPLES = ['tomato', 'tomato on a vine', 'neon tokyo', '80s disco', 'quiet forest at dawn', 'a very sad birthday'];
+$('#chips').innerHTML = EXAMPLES.map(e => `<button class="chip" type="button">${esc(e)}</button>`).join('');
+
+// one persistent bar per colour, so stripes glide to their new place and width instead of being redrawn
+const bars = C.PALETTE.map(c => { const d = document.createElement('div'); d.className = 'stripe'; d.style.background = c.hex; d.style.color = C.textOn(c.hex); d.dataset.name = c.name; $('#stripes').appendChild(d); return d; });
+const barOf = Object.fromEntries(C.PALETTE.map((c, i) => [c.name, bars[i]]));
+
+const S = { lat: [], tokens: 0, spent: null, counts: {}, done: 0, last: null, cutTurns: 0, cutOptions: 0, errors: 0, shown: 0, hiddenSlivers: 0, top: '' };
+let timer = 0, inflight = false, dirty = false, lastKey = '', backends = {}, lastRaw = null;
+const methodFor = model => { const v = $('#variant').value; return v === 'auto' ? (backends[model] === 'lm' ? 'rotated' : 'single') : v; };
+
+async function loadModels() {
+  try {
+    const d = await (await fetch('/v1/models')).json();
+    backends = Object.fromEntries(d.models.map(m => [m.name, m.backend]));
+    const ready = d.models.filter(m => m.status === 'ready' || m.status === 'registered');
+    $('#model').innerHTML = ready.map(m => `<option value="${esc(m.name)}">${esc(m.name)} (${m.backend})</option>`).join('');
+    const want = QP.get('model') || d.default;
+    if (ready.some(m => m.name === want)) $('#model').value = want;
+    if (!ready.length) say('No models loaded. Start the server with --model.', true);
+  } catch (e) { say('Cannot reach the Decida server: ' + e.message, true); }
+}
+
+function paint(raw) {
+  const sel = $('#gamma').value, gamma = sel === 'auto' ? C.autoGamma(raw) : +sel, list = C.sharpen(raw, gamma);
+  $('#info').className = gamma > 1 ? 'cut on' : 'cut';
+  $('#info').textContent = gamma > 1 ? `Contrast x${gamma}: this model is unsure how much of each colour (its top colour has ${(100 * raw[0].share).toFixed(0)}%), so the differences are amplified for display. The order is exactly the model's.` : '';
+  const { stripes, hidden } = C.layout(list);
+  const on = new Set(stripes.map(s => s.name));
+  for (const s of stripes) {
+    const b = barOf[s.name]; b.style.left = s.left + '%'; b.style.width = s.width + '%';
+    b.innerHTML = s.width > 9 ? `<span class="lab">${esc(s.name)}<small>${(100 * s.share).toFixed(s.share < .1 ? 1 : 0)}%</small></span>` : s.width > 4 ? `<span class="lab"><small>${Math.round(100 * s.share)}%</small></span>` : '';
+    b.title = `${s.name} ${(100 * s.share).toFixed(1)}%`;
+  }
+  for (const c of C.PALETTE) if (!on.has(c.name)) { const b = barOf[c.name]; b.style.width = '0%'; b.innerHTML = ''; }
+  $('#hint').style.display = 'none';
+  $('#legend').innerHTML = stripes.slice(0, 8).map(s => `<span><i style="background:${s.hex}"></i>${esc(s.name)} ${s.hex} · ${(100 * s.share).toFixed(1)}%</span>`).join('') + (hidden ? `<span style="color:var(--ink3)">+${hidden} slivers hidden</span>` : '');
+  S.shown = stripes.length; S.hiddenSlivers = hidden; S.top = stripes[0] ? stripes[0].name : '';
+}
+
+function clearBars() { lastRaw = null; $('#info').className = 'cut'; for (const b of bars) { b.style.width = '0%'; b.innerHTML = ''; } $('#hint').style.display = 'flex'; $('#legend').innerHTML = ''; lastKey = ''; }
+
+function display(req, raw) { // the monitor shows one question and a few answers, not all 24
+  const ids = Object.keys(req.questions), q = Object.fromEntries(ids.slice(0, 2).map(k => [k, req.questions[k]]));
+  if (ids.length > 2) q['…'] = `${ids.length - 2} more questions`;
+  const a = Object.keys(raw.answers), sa = Object.fromEntries(a.slice(0, 3).map(k => [k, raw.answers[k]]));
+  if (a.length > 3) sa['…'] = `${a.length - 3} more answers`;
+  return [{ state: req.state, questions: q }, { ...raw, answers: sa }];
+}
+
+async function pump() {
+  const text = $('#q').value.trim(), model = $('#model').value, variant = methodFor(model);
+  if (!text) { clearBars(); return; }
+  if (!model) { say('Load a model first.', true); return; }
+  const key = `${model}|${variant}|${text}`;
+  if (key === lastKey) return;
+  if (inflight) { dirty = true; return; }  // coalesce: only the newest text is asked once the current request returns
+  inflight = true; lastKey = key; say('');
+  const req = C.toRequest(text, variant), t0 = performance.now();
+  try {
+    const r = await fetch('/v1/systemone', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model, ...req }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error((j.error && j.error.message) || r.statusText);
+    const ms = performance.now() - t0, list = C.shares(j.answers, variant);
+    if ($('#q').value.trim() === text) { lastRaw = list; paint(list); } // ignore an answer for text that has already changed
+    S.lat.push(ms); S.done++; S.tokens += (j.usage && j.usage.input_tokens) || 0;
+    if (j.x_decida && j.x_decida.spent_usd != null) S.spent = j.x_decida.spent_usd;
+    const cut = j.x_decida && j.x_decida.truncation;
+    if (cut && (cut.options_cut || cut.state_cut)) { S.cutTurns++; S.cutOptions = Math.max(S.cutOptions, cut.options_cut); }
+    S.counts[list[0].name] = (S.counts[list[0].name] || 0) + 1;
+    const [shownReq, shownRaw] = display(req, j);
+    S.last = { probs: Object.fromEntries(list.slice(0, 8).map(c => [c.name, c.share])), choice: list[0].name, confidence: list[0].share, ms, subject: `"${text}"`, request: shownReq, raw: shownRaw };
+    render();
+  } catch (e) { S.errors++; say('Request failed: ' + e.message, true); lastKey = ''; }
+  inflight = false;
+  if (dirty || $('#q').value.trim() !== text) { dirty = false; pump(); }
+}
+
+function render() {
+  const p50 = pct(S.lat, .5), p95 = pct(S.lat, .95);
+  $('#stats').innerHTML = [stat('Requests', S.done), stat('Latency last', S.lat.length ? Math.round(S.lat[S.lat.length - 1]) + ' ms' : '–'), stat('Latency p50', p50 == null ? '–' : Math.round(p50) + ' ms'),
+    stat('Latency p95', p95 == null ? '–' : Math.round(p95) + ' ms'), stat('Colours shown', S.shown), stat('Top colour', S.top || '–'),
+    stat(S.spent != null ? 'Est. cost' : 'Input tokens', S.spent != null ? '$' + S.spent.toFixed(4) : S.tokens.toLocaleString()), stat('Errors', S.errors, S.errors > 0)].join('');
+  M.update({ lat: S.lat, tokens: S.tokens, counts: S.counts, countsLabel: 'top colour', done: S.done, last: S.last, cut: { turns: S.cutTurns, options: S.cutOptions, state: false } });
+}
+
+const schedule = () => { clearTimeout(timer); timer = setTimeout(pump, Math.max(0, +$('#debounce').value || 0)); };
+$('#q').addEventListener('input', schedule);
+$('#model').addEventListener('change', () => { lastKey = ''; pump(); });
+$('#gamma').addEventListener('change', () => { if (lastRaw) paint(lastRaw); });
+$('#variant').addEventListener('change', () => { lastKey = ''; pump(); });
+$('#chips').addEventListener('click', e => { const b = e.target.closest('.chip'); if (!b) return; $('#q').value = b.textContent; $('#q').focus(); lastKey = ''; pump(); });
+if (QP.get('variant')) $('#variant').value = QP.get('variant');
+if (QP.get('debounce')) $('#debounce').value = QP.get('debounce');
+if (QP.get('gamma')) $('#gamma').value = QP.get('gamma');
+$('#fs').addEventListener('click', () => { const st = $('#stage'); if (document.fullscreenElement) document.exitFullscreen(); else if (st.requestFullscreen) st.requestFullscreen(); });
+window.__palette = { S, C, get inflight() { return inflight; } };
+render();
+loadModels().then(() => { if (QP.get('q')) { $('#q').value = QP.get('q'); pump(); } });
+</script>
+</body>
+</html>

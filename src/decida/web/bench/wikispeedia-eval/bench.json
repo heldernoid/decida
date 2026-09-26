@@ -1,0 +1,1 @@
+{"title": "Wikispeedia batch eval", "description": "Runs many Wikispeedia games in a row and reports wins and clicks against the shortest path and human averages. For measuring models, not for watching a game.", "tags": ["knowledge", "batch", "real data"], "hidden": true}

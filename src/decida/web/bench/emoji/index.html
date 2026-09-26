@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decida bench: Emoji finder</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2024%2024%22%3E%3Crect%20x=%221%22%20y=%2216%22%20width=%224%22%20height=%225%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%227%22%20y=%223%22%20width=%224%22%20height=%2218%22%20rx=%221%22%20fill=%22%233a34d2%22/%3E%3Crect%20x=%2213%22%20y=%2213%22%20width=%224%22%20height=%228%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%2219%22%20y=%2218%22%20width=%224%22%20height=%223%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../common/bench.css">
+<!-- The idea follows a public Jev demo ("when a designer gets access to Jev", https://x.com/heystefan_); no code used -->
+<style>
+.stage{position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--line);box-shadow:0 12px 30px -18px rgba(0,0,0,.4)}
+#cv{width:100%;height:auto;display:block}
+.search{position:absolute;top:18px;left:50%;transform:translateX(-50%);width:min(520px,80%);display:flex;flex-direction:column;align-items:center;gap:10px}
+.search input{width:100%;border:0;border-radius:14px;background:rgba(255,255,255,.96);color:#111;font:500 18px var(--sans);padding:14px 18px;outline:none;box-shadow:0 8px 28px -10px rgba(0,0,0,.35)}
+.search input::placeholder{color:#a8a8a8}
+.chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+.chip{font:12px var(--mono);color:#555;background:rgba(255,255,255,.85);border:1px solid #e3e3e3;border-radius:999px;padding:3px 10px;cursor:pointer}
+.chip:hover{background:#e9e9ff;border-color:#c9c9f5}
+.controls input[type=number]{width:64px}
+.credit{font-size:12px;color:var(--ink3,#7a8699);margin:10px 0 0}.credit a{color:inherit;text-decoration:underline}
+</style>
+</head>
+<body>
+<header><a href="/">&larr; Decida</a><h1>Emoji finder</h1><span style="color:var(--ink3);font-size:13px">type what you are looking for; the model picks the emoji that match, one yes/no each</span></header>
+<main class="wide">
+<section class="panel">
+  <div class="stage" id="stage">
+    <canvas id="cv" width="900" height="560" aria-label="Pile of emoji"></canvas>
+    <div class="search">
+      <input id="q" type="text" placeholder="things you can wear in winter" autocomplete="off" spellcheck="false" autofocus>
+      <div class="chips" id="chips"></div>
+    </div>
+  </div>
+  <div class="controls">
+    <label>Model <select id="model"></select></label>
+    <label title="How many emoji are in the pile (one question each, batched into one request)">Emoji <select id="count"><option>60</option><option>120</option><option value="all" selected>all</option></select></label>
+    <label title="Which emoji float up. auto: a cut-off when the model clearly separates emoji, otherwise its 8 most likely (small models often say ~50% or ~0% to everything). at least: the cut-off below. top 8: always the 8 most likely.">Rule <select id="rule"><option value="auto" selected>auto</option><option value="thr">at least</option><option value="top">top 8</option></select></label>
+    <label title="Used by the 'at least' rule">Sure at <input type="number" id="thr" value="50" min="5" max="95" step="5"> %</label>
+    <label>Pause <input type="number" id="debounce" value="220" min="0" max="2000" step="20"> ms</label>
+    <button id="rain" class="ghost">Rain again</button>
+    <button id="fs" class="ghost fsbtn" type="button" title="Show the stage full screen (Esc to leave)">Full screen</button>
+  </div>
+  <div id="msg"></div>
+  <div id="info" class="cut"></div>
+  <p class="note">Your text is the state and every emoji is judged separately by a short statement ("A glove is an example of this."), so several can match, none can, and the model's certainty shows as a percentage under the floating ones. A model that answers about 50% for everything is not telling emoji apart: watch "Median answer" and "Best minus median". Hover an emoji to see its name. Small models often have no idea; a large one usually does.</p>
+  <p class="credit">Idea: Stefan (<a href="https://x.com/heystefan_" target="_blank" rel="noopener">@heystefan_</a>), "when a designer gets access to Jev". The design and code are our own.</p>
+</section>
+<section class="panel" id="side"></section>
+</main>
+<script type="module">
+import * as E from './emoji.js';
+import * as PH from './physics.js';
+import * as M from '../common/monitor.js';
+const { esc, pct, stat } = M;
+const $ = s => document.querySelector(s);
+const QP = new URLSearchParams(location.search);
+$('#side').innerHTML = M.panelHTML();
+const W = 900, H = 560, DPR = Math.min(2, window.devicePixelRatio || 1), R = 17;
+const cv = $('#cv'), ctx = cv.getContext('2d');
+let K = DPR; // backing pixels per drawing unit: follows the displayed size
+cv.width = Math.round(W * K); cv.height = Math.round(H * K);
+const say = (t, err) => { const m = $('#msg'); m.textContent = t || ''; m.className = t ? 'on' + (err ? ' err' : '') : ''; };
+const EXAMPLES = ['things you can wear in winter', 'animals that live in the sea', 'things in a kitchen', 'things that are round', 'something scary'];
+$('#chips').innerHTML = EXAMPLES.map(e => `<button class="chip" type="button">${esc(e)}</button>`).join('');
+
+let items = [], world = null, sprites = new Map(), scores = [], hover = null;
+const S = { median: null, spread: null, lat: [], tokens: 0, spent: null, counts: {}, done: 0, last: null, cutTurns: 0, cutOptions: 0, errors: 0, lifted: 0 };
+let timer = 0, inflight = false, dirty = false, lastKey = '';
+
+function sprite(ch) { // each emoji is drawn once into a small canvas, then stamped every frame
+  let c = sprites.get(ch); if (c) return c;
+  const size = 32, box = 48;
+  c = document.createElement('canvas'); c.width = Math.ceil(box * K); c.height = Math.ceil(box * K);
+  const g = c.getContext('2d'); g.scale(K, K); g.font = `${size}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+  g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(ch, box / 2, box / 2 + 2);
+  sprites.set(ch, c); return c;
+}
+
+function rebuild() {
+  items = $('#count').value === 'all' ? E.EMOJIS.slice() : E.subset(+$('#count').value);
+  world = PH.makeWorld(W, H, items.length, R, Math.floor(Math.random() * 1e6));
+  scores = []; lastKey = ''; S.lifted = 0;
+  if ($('#q').value.trim()) pump();
+}
+
+async function loadModels() {
+  try {
+    const d = await (await fetch('/v1/models')).json();
+    const ready = d.models.filter(m => m.status === 'ready' || m.status === 'registered');
+    $('#model').innerHTML = ready.map(m => `<option value="${esc(m.name)}">${esc(m.name)} (${m.backend})</option>`).join('');
+    const want = QP.get('model') || d.default;
+    if (ready.some(m => m.name === want)) $('#model').value = want;
+    if (!ready.length) say('No models loaded. Start the server with --model.', true);
+  } catch (e) { say('Cannot reach the Decida server: ' + e.message, true); }
+}
+
+function applyMatches(list) { // bodies of matching emoji get a spring target; everything else falls back into the pile
+  const pick = E.pickMatches(list, $('#rule').value, (+$('#thr').value || 50) / 100), hit = pick.hit, tg = E.targets(hit.length, W, 150, 62);
+  const byIndex = new Map(hit.map((e, i) => [e.index, tg[i]]));
+  world.bodies.forEach((b, i) => { b.lift = byIndex.get(i) || null; });
+  S.lifted = hit.length; S.median = pick.median; S.spread = pick.spread;
+  $('#info').className = pick.note ? 'cut on' : 'cut'; $('#info').textContent = pick.note; // say why, when the rule was not the plain cut-off
+  return hit;
+}
+
+function display(req, raw) {
+  const ids = Object.keys(req.questions), q = Object.fromEntries(ids.slice(0, 2).map(k => [k, req.questions[k]]));
+  if (ids.length > 2) q['…'] = `${ids.length - 2} more questions`;
+  const a = Object.keys(raw.answers), sa = Object.fromEntries(a.slice(0, 3).map(k => [k, raw.answers[k]]));
+  if (a.length > 3) sa['…'] = `${a.length - 3} more answers`;
+  return [{ state: req.state, questions: q }, { ...raw, answers: sa }];
+}
+
+async function pump() {
+  const text = $('#q').value.trim(), model = $('#model').value;
+  if (!text) { scores = []; if (world) world.bodies.forEach(b => { b.lift = null; }); S.lifted = 0; lastKey = ''; return; }
+  if (!model) { say('Load a model first.', true); return; }
+  const key = `${model}|${items.length}|${text}`;
+  if (key === lastKey) return;
+  if (inflight) { dirty = true; return; }
+  inflight = true; lastKey = key; say('');
+  const req = E.toRequest(text, items), t0 = performance.now();
+  try {
+    const r = await fetch('/v1/systemone', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model, ...req }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error((j.error && j.error.message) || r.statusText);
+    const ms = performance.now() - t0, list = E.scores(j.answers, items);
+    if ($('#q').value.trim() === text) { scores = list; applyMatches(list); } // ignore an answer for text that has already changed
+    S.lat.push(ms); S.done++; S.tokens += (j.usage && j.usage.input_tokens) || 0;
+    if (j.x_decida && j.x_decida.spent_usd != null) S.spent = j.x_decida.spent_usd;
+    const cut = j.x_decida && j.x_decida.truncation;
+    if (cut && (cut.options_cut || cut.state_cut)) { S.cutTurns++; S.cutOptions = Math.max(S.cutOptions, cut.options_cut); }
+    const top = list.slice().sort((a, b) => b.p - a.p);
+    S.counts[top[0].name] = (S.counts[top[0].name] || 0) + 1;
+    const [shownReq, shownRaw] = display(req, j);
+    S.last = { probs: Object.fromEntries(top.slice(0, 8).map(e => [e.name, e.p])), choice: top[0].name, confidence: top[0].p, ms, subject: `"${text}"`, msLabel: `(${items.length} questions)`, request: shownReq, raw: shownRaw };
+    render();
+  } catch (e) { S.errors++; say('Request failed: ' + e.message, true); lastKey = ''; }
+  inflight = false;
+  if (dirty || $('#q').value.trim() !== text) { dirty = false; pump(); }
+}
+
+function render() {
+  const p50 = pct(S.lat, .5), p95 = pct(S.lat, .95);
+  $('#stats').innerHTML = [stat('Requests', S.done), stat('Latency last', S.lat.length ? Math.round(S.lat[S.lat.length - 1]) + ' ms' : '–'), stat('Latency p50', p50 == null ? '–' : Math.round(p50) + ' ms'),
+    stat('Latency p95', p95 == null ? '–' : Math.round(p95) + ' ms'), stat('Floating up', S.lifted), stat('Median answer', S.median == null ? '–' : Math.round(100 * S.median) + '%'),
+    stat('Best minus median', S.spread == null ? '–' : Math.round(100 * S.spread) + ' pts'),
+    stat(S.spent != null ? 'Est. cost' : 'Input tokens', S.spent != null ? '$' + S.spent.toFixed(4) : S.tokens.toLocaleString()), stat('Errors', S.errors, S.errors > 0)].join('');
+  M.update({ lat: S.lat, tokens: S.tokens, counts: S.counts, countsLabel: 'top match', done: S.done, last: S.last, cut: { turns: S.cutTurns, options: S.cutOptions, state: false } });
+}
+
+// ---------- drawing ----------
+function fit() { // re-render at the displayed size when it changes noticeably
+  const want = Math.max(1, (cv.clientWidth || W) * DPR / W);
+  if (Math.abs(want - K) / K < 0.06) return;
+  K = want; cv.width = Math.round(W * K); cv.height = Math.round(H * K); sprites = new Map();
+}
+if (window.ResizeObserver) new ResizeObserver(fit).observe(cv);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function draw() {
+  ctx.setTransform(cv.width / W, 0, 0, cv.width / W, 0, 0);
+  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#f7f8fb'); g.addColorStop(1, '#ecedf2'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  if (!world) return;
+  const lifted = [], rest = [];
+  for (const b of world.bodies) (b.lift ? lifted : rest).push(b);
+  if (lifted.length) { // a soft spotlight behind the selected ones, so they read as a group apart from the pile
+    const xs = lifted.map(b => b.lift.x), ys = lifted.map(b => b.lift.y), x0 = Math.min(...xs) - 44, x1 = Math.max(...xs) + 44, y0 = Math.min(...ys) - 44, y1 = Math.max(...ys) + 56;
+    ctx.save(); ctx.shadowColor = 'rgba(70,70,200,.16)'; ctx.shadowBlur = 24; ctx.fillStyle = 'rgba(255,255,255,.72)'; ctx.beginPath(); ctx.roundRect(x0, y0, x1 - x0, y1 - y0, 22); ctx.fill(); ctx.restore();
+  }
+  for (const b of rest) ctx.drawImage(sprite(items[b.id].char), b.x - 24 * .78, b.y - 24 * .78, 48 * .78, 48 * .78); // pile
+  for (const b of lifted) { // matches: bigger, with a soft glow and their probability
+    const s = 1.25; ctx.save(); ctx.shadowColor = 'rgba(60,60,200,.35)'; ctx.shadowBlur = 16; ctx.drawImage(sprite(items[b.id].char), b.x - 24 * s, b.y - 24 * s, 48 * s, 48 * s); ctx.restore();
+    const p = scores[b.id] ? scores[b.id].p : 0;
+    ctx.fillStyle = '#5a5a78'; ctx.font = '600 11px ui-monospace,monospace'; ctx.textAlign = 'center'; ctx.fillText(`${Math.round(100 * p)}%`, b.x, b.y + 36);
+  }
+  if (hover) { // name of the emoji under the mouse
+    const b = hover, name = items[b.id].name + (scores[b.id] ? ` · ${Math.round(100 * scores[b.id].p)}%` : '');
+    ctx.font = '600 12px ui-sans-serif,system-ui'; const w = ctx.measureText(name).width + 14, x = Math.min(W - w - 4, Math.max(4, b.x - w / 2)), y = b.y - 40;
+    ctx.fillStyle = 'rgba(20,20,30,.88)'; ctx.beginPath(); ctx.roundRect(x, y, w, 22, 6); ctx.fill(); ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.fillText(name, x + 7, y + 15);
+  }
+}
+
+let prev = 0;
+function frame(t) { requestAnimationFrame(frame); const dt = Math.min(.05, (t - prev) / 1000); prev = t; if (world) PH.step(world, dt || 1 / 60); draw(); }
+
+cv.addEventListener('mousemove', e => {
+  const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
+  hover = null; let best = R * 1.3;
+  if (world) for (const b of world.bodies) { const d = Math.hypot(b.x - x, b.y - y); if (d < best) { best = d; hover = b; } }
+});
+cv.addEventListener('mouseleave', () => { hover = null; });
+
+const schedule = () => { $('#chips').style.display = $('#q').value ? 'none' : 'flex'; clearTimeout(timer); timer = setTimeout(pump, Math.max(0, +$('#debounce').value || 0)); }; // the examples make way for what is being typed
+$('#q').addEventListener('input', schedule);
+$('#model').addEventListener('change', () => { lastKey = ''; pump(); });
+$('#count').addEventListener('change', rebuild);
+for (const id of ['thr', 'rule']) $('#' + id).addEventListener('change', () => { if (scores.length) applyMatches(scores); render(); });
+$('#rain').addEventListener('click', rebuild);
+$('#chips').addEventListener('click', e => { const b = e.target.closest('.chip'); if (!b) return; $('#q').value = b.textContent; $('#chips').style.display = 'none'; $('#q').focus(); lastKey = ''; pump(); });
+for (const id of ['count', 'thr', 'rule', 'debounce']) if (QP.get(id)) $('#' + id).value = QP.get(id);
+$('#fs').addEventListener('click', () => { const st = $('#stage'); if (document.fullscreenElement) document.exitFullscreen(); else if (st.requestFullscreen) st.requestFullscreen(); });
+window.__emoji = { S, get world() { return world; }, get items() { return items; }, get scores() { return scores; }, get inflight() { return inflight; } };
+rebuild(); render(); requestAnimationFrame(frame);
+loadModels().then(() => { if (QP.get('q')) { $('#q').value = QP.get('q'); $('#chips').style.display = 'none'; pump(); } });
+</script>
+</body>
+</html>

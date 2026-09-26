@@ -1,0 +1,55 @@
+[project]
+name = "decida"
+version = "0.1.0"
+description = "A local runtime for System One (decision) models: typed questions, one forward pass, REST and MCP, with a testbench"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Decida contributors" }]
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.0",
+    "typer>=0.9.0",
+    "numpy>=1.26.0",
+    "orjson>=3.9.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "torch>=2.0.0",
+    "transformers>=4.48.0",
+    "safetensors>=0.4.0",
+    "huggingface_hub>=0.24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.3.0",
+    "pyright>=1.1.350",
+]
+
+[project.urls]
+Homepage = "https://github.com/heldernoid/decida"
+Source = "https://github.com/heldernoid/decida"
+
+[project.scripts]
+decida = "decida.cli:app"
+
+[tool.ruff]
+line-length = 100
+
+[tool.pyright]
+typeCheckingMode = "standard"
+include = ["src"]
+# The modules that are fully typed are held to strict mode. The engines call torch and transformers, which are largely untyped, so they
+# are checked in standard mode.
+strict = ["src/decida/schema", "src/decida/settings.py", "src/decida/datasets.py"]
+
+[tool.uv]
+# Only releases at least 14 days old are resolved. Move this date forward when updating the lock file.
+exclude-newer = "2026-09-12T00:00:00Z"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

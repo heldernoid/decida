@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>decida</title>
+  <link rel="icon"
+    href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2024%2024%22%3E%3Crect%20x=%221%22%20y=%2216%22%20width=%224%22%20height=%225%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%227%22%20y=%223%22%20width=%224%22%20height=%2218%22%20rx=%221%22%20fill=%22%233a34d2%22/%3E%3Crect%20x=%2213%22%20y=%2213%22%20width=%224%22%20height=%228%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%2219%22%20y=%2218%22%20width=%224%22%20height=%223%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3C/svg%3E">
+  <meta name="description"
+    content="decida is a local runtime for System One models: typed questions, one forward pass, REST and MCP.">
+  <style>
+    :root {
+      --bg: #eceff4;
+      --card: #fff;
+      --ink: #141a2e;
+      --ink2: #4a5270;
+      --ink3: #7b839e;
+      --line: #dde2ec;
+      --accent: #3a34d2;
+      --track: #e3e7f0;
+      --code: #171d33;
+      --codeink: #e7ebf7;
+      --ok: #0e7a55;
+      --warn: #a5610b
+    }
+
+    @media (prefers-color-scheme:dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #0f1322;
+        --card: #171c30;
+        --ink: #eef1fb;
+        --ink2: #b3bad2;
+        --ink3: #8189a6;
+        --line: #2a3150;
+        --accent: #8d89ff;
+        --track: #262d4a;
+        --code: #0b0e1b
+      }
+    }
+
+    * {
+      box-sizing: border-box
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif
+    }
+
+    .wrap {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 0 16px
+    }
+
+    header {
+      padding: 56px 0 24px
+    }
+
+    h1 {
+      font-size: clamp(34px, 6vw, 54px);
+      line-height: 1.05;
+      margin: 0 0 14px;
+      letter-spacing: -.02em
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px
+    }
+
+    .logo {
+      width: .85em;
+      height: .85em;
+      flex: none
+    }
+
+    h2 {
+      font-size: 22px;
+      margin: 0 0 6px
+    }
+
+    p {
+      color: var(--ink2);
+      margin: 0 0 12px
+    }
+
+    a {
+      color: var(--accent)
+    }
+
+    .banner {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 14px;
+      color: var(--ink2);
+      margin-top: 18px
+    }
+
+    section {
+      padding: 28px 0
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px;
+      overflow: hidden
+    }
+
+    pre,
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 13px
+    }
+
+    pre {
+      background: var(--code);
+      color: var(--codeink);
+      border-radius: 10px;
+      padding: 14px;
+      overflow: auto;
+      margin: 0
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px
+    }
+
+    td,
+    th {
+      text-align: left;
+      padding: 9px 8px;
+      border-top: 1px solid var(--line);
+      vertical-align: top
+    }
+
+    th {
+      color: var(--ink3);
+      font-weight: 600;
+      font-size: 12px;
+      border-top: 0;
+      text-transform: uppercase;
+      letter-spacing: .06em
+    }
+
+    .verb {
+      font: 700 11px ui-monospace, monospace;
+      display: inline-block;
+      width: 56px
+    }
+
+    .get {
+      color: var(--ok)
+    }
+
+    .post {
+      color: var(--accent)
+    }
+
+    .del {
+      color: #b3261e
+    }
+
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 14px
+    }
+
+    .tabs button {
+      font: inherit;
+      font-size: 14px;
+      padding: 6px 12px;
+      border-radius: 99px;
+      border: 1px solid var(--line);
+      background: var(--card);
+      color: var(--ink);
+      cursor: pointer
+    }
+
+    .tabs button[aria-pressed="true"] {
+      background: var(--ink);
+      color: var(--bg);
+      border-color: var(--ink)
+    }
+
+    .q {
+      padding: 12px 0;
+      border-top: 1px solid var(--line)
+    }
+
+    .q b {
+      font-size: 14px
+    }
+
+    .q .t {
+      font: 11px ui-monospace, monospace;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      padding: 1px 5px;
+      color: var(--ink3);
+      margin: 0 6px
+    }
+
+    .bar {
+      display: grid;
+      grid-template-columns: minmax(80px, 140px) 1fr 44px;
+      gap: 10px;
+      align-items: center;
+      font-size: 14px;
+      margin-top: 6px
+    }
+
+    .trk {
+      height: 10px;
+      border-radius: 5px;
+      background: var(--track);
+      overflow: hidden
+    }
+
+    .fill {
+      height: 100%;
+      background: var(--ink3)
+    }
+
+    .top .fill {
+      background: var(--accent)
+    }
+
+    .top {
+      font-weight: 600
+    }
+
+    .num {
+      font-family: ui-monospace, monospace;
+      text-align: right
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px
+    }
+
+    @media (max-width:760px) {
+      .grid {
+        grid-template-columns: 1fr
+      }
+    }
+
+    .state {
+      border-left: 3px solid var(--line);
+      padding: 6px 12px;
+      margin-bottom: 8px;
+      color: var(--ink2);
+      font-size: 14px
+    }
+
+    .foot {
+      font-size: 13px;
+      color: var(--ink3);
+      padding: 24px 0 48px
+    }
+  </style>
+</head>
+
+<body>
+  <header class="wrap">
+    <h1 class="brand"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="1" y="16" width="4" height="5" rx="1" fill="var(--ink3)" />
+        <rect x="7" y="3" width="4" height="18" rx="1" fill="var(--accent)" />
+        <rect x="13" y="13" width="4" height="8" rx="1" fill="var(--ink3)" />
+        <rect x="19" y="18" width="4" height="3" rx="1" fill="var(--ink3)" />
+      </svg> decida</h1>
+    <p>A local runtime for <b>System One models</b>. Send a state and typed questions, get a probability distribution
+      for each one back from a single forward pass, with no generated text. It serves REST and MCP and includes a
+      testbench of small games.</p>
+    <pre>uv tool install git+https://github.com/heldernoid/decida
+decida serve        # then open http://127.0.0.1:8000</pre>
+    <div class="banner">This page is a static preview. The answers in the simulator below are <b>made up in your
+        browser</b>; no model is running. For the real thing, <a href="https://github.com/heldernoid/decida">install
+        decida from GitHub</a>.</div>
+  </header>
+
+  <main class="wrap">
+    <section id="sim">
+      <h2>Simulated request</h2>
+      <p>The request on the left is real decida syntax. The response on the right is an illustration of its shape.</p>
+      <div class="tabs" id="tabs"></div>
+      <div class="grid">
+        <div class="card">
+          <pre id="req"></pre>
+        </div>
+        <div class="card" id="resp"></div>
+      </div>
+    </section>
+
+    <section id="types">
+      <h2>Three question types</h2>
+      <div class="card">
+        <table>
+          <tr>
+            <th>type</th>
+            <th>you give</th>
+            <th>you get back</th>
+          </tr>
+          <tr>
+            <td><code>choice</code></td>
+            <td>2 to 255 options, each with a description</td>
+            <td>a probability for every option</td>
+          </tr>
+          <tr>
+            <td><code>score</code></td>
+            <td>an ordered list of 2 to 32 levels, lowest first</td>
+            <td>a probability for every level, and the expected level</td>
+          </tr>
+          <tr>
+            <td><code>noul</code></td>
+            <td>a yes/no question about the state</td>
+            <td>the probability that it is true</td>
+          </tr>
+        </table>
+      </div>
+    </section>
+
+    <section id="api">
+      <h2>API</h2>
+      <p>Every endpoint of a running server, with request and response models, is also in its interactive docs at
+        <code>/docs</code>.
+      </p>
+      <div class="card">
+        <table id="api-rows">
+          <tr>
+            <th>Endpoint</th>
+            <th>What it does</th>
+          </tr>
+        </table>
+      </div>
+      <p style="margin-top:14px">MCP tools (<code>decida mcp</code>): <code>decide</code>, <code>classify_text</code>,
+        <code>gate_tool_call</code>, <code>triage_failure</code>, <code>vet_dependency</code>.
+      </p>
+    </section>
+  </main>
+
+  <footer class="wrap foot">decida is an independent open-source project and is not affiliated with TypeSafe, Convai
+    Innovations or any other model author. Code under Apache-2.0. Credits are in <a
+      href="https://github.com/heldernoid/decida/blob/main/THIRD_PARTY.md">THIRD_PARTY.md</a>.</footer>
+
+  <script>
+    (function () {
+      var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] }) };
+      var EX = {
+        billing: {
+          label: 'Billing routing', state: 'Customer: my invoice was charged twice and nobody answers the phone!',
+          questions: {
+            department: { type: 'choice', instructions: 'Which team should handle this?', criteria: { billing: 'Charges, invoices, refunds', technical: 'Bugs and outages', sales: 'Pricing and new seats' } },
+            frustration: { type: 'score', instructions: 'How frustrated is the customer?', criteria: ['Calm', 'Frustrated', 'Very angry'] },
+            urgent: { type: 'noul', instructions: 'Is this urgent and needs an answer today?' }
+          },
+          out: { department: { billing: .95, technical: .03, sales: .02 }, frustration: { 'Calm': .02, 'Frustrated': .2, 'Very angry': .78 }, urgent: .9 }
+        },
+        gate: {
+          label: 'Tool-call gate', state: 'Agent wants to run: rm -rf ./build && git push --force origin main',
+          questions: {
+            action: { type: 'choice', instructions: 'What should happen to this command?', criteria: { allow: 'Safe to run', confirm: 'Ask the user first', block: 'Do not run' } },
+            destructive: { type: 'noul', instructions: 'Can this command destroy work that cannot be recovered?' }
+          },
+          out: { action: { allow: .04, confirm: .31, block: .65 }, destructive: .93 }
+        },
+        churn: {
+          label: 'Churn risk', state: 'Cancelled two seats last month and asked about export options this week.',
+          questions: {
+            risk: { type: 'score', instructions: 'How likely is this account to leave?', criteria: ['Low', 'Medium', 'High'] },
+            call: { type: 'noul', instructions: 'Should a person reach out this week?' }
+          },
+          out: { risk: { Low: .08, Medium: .32, High: .6 }, call: .77 }
+        }
+      };
+      var API = [
+        ['post', '/v1/systemone', 'One state and its typed questions, answered in one forward pass.'],
+        ['post', '/v1/systemone/batch', 'Up to 256 independent requests to one model in one call, answered concurrently.'],
+        ['get', '/v1/models', 'Every model: name, reference, backend, device, memory, latency.'],
+        ['post', '/v1/models', 'Load a model from a Hugging Face id or a local path.'],
+        ['del', '/v1/models/{name}', 'Unload a model and free its memory.'],
+        ['post', '/v1/check', 'Run the 14 smoke checks against a loaded model.'],
+        ['get', '/v1/device', 'Device kind, name and memory.'],
+        ['get', '/v1/benches', 'The testbench pages and what they need.'],
+        ['get', '/v1/datasets', 'Data the benches download on demand; POST /v1/datasets/{id}/download fetches one.'],
+        ['get', '/health', 'Liveness, loaded models and device. Also /healthz.'],
+        ['get', '/metrics', 'Prometheus counters and latency histograms per model.']
+      ];
+      var cur = 'billing';
+      function bars(rows) {
+        var top = 0, m = -1; rows.forEach(function (r, i) { if (r[1] > m) { m = r[1]; top = i } });
+        return rows.map(function (r, i) { return '<div class="bar' + (i === top ? ' top' : '') + '"><span>' + esc(r[0]) + '</span><span class="trk"><span class="fill" style="display:block;width:' + (r[1] * 100) + '%"></span></span><span class="num">' + r[1].toFixed(2) + '</span></div>' }).join('')
+      }
+      function draw() {
+        var e = EX[cur];
+        document.getElementById('req').textContent = JSON.stringify({ model: 'decidabert', state: e.state, questions: e.questions }, null, 2);
+        var h = '<div class="state">' + esc(e.state) + '</div>';
+        Object.keys(e.questions).forEach(function (k) {
+          var q = e.questions[k], o = e.out[k];
+          h += '<div class="q"><b>' + esc(k) + '</b><span class="t">' + q.type + '</span><span style="color:var(--ink3);font-size:14px">' + esc(q.instructions) + '</span>';
+          if (q.type === 'noul') h += bars([['true', o], ['false', 1 - o]]);
+          else { var keys = q.type === 'choice' ? Object.keys(q.criteria) : q.criteria; h += bars(keys.map(function (n) { return [n, o[n]] })) }
+          h += '</div>'
+        });
+        h += '<p style="font-size:13px;color:var(--warn);margin:10px 0 0">Simulated. Not the output of any model.</p>';
+        document.getElementById('resp').innerHTML = h;
+        Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) { b.setAttribute('aria-pressed', b.dataset.k === cur) });
+      }
+      document.getElementById('tabs').innerHTML = Object.keys(EX).map(function (k) { return '<button type="button" data-k="' + k + '">' + EX[k].label + '</button>' }).join('');
+      document.getElementById('tabs').addEventListener('click', function (ev) { var b = ev.target.closest('button'); if (b) { cur = b.dataset.k; draw() } });
+      document.getElementById('api-rows').insertAdjacentHTML('beforeend', API.map(function (r) { return '<tr><td style="white-space:nowrap"><span class="verb ' + r[0] + '">' + (r[0] === 'del' ? 'DELETE' : r[0].toUpperCase()) + '</span><code>' + esc(r[1]) + '</code></td><td>' + esc(r[2]) + '</td></tr>' }).join(''));
+      draw();
+    })();
+  </script>
+</body>
+
+</html>
