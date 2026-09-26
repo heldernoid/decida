@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decida bench: Snake</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2024%2024%22%3E%3Crect%20x=%221%22%20y=%2216%22%20width=%224%22%20height=%225%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%227%22%20y=%223%22%20width=%224%22%20height=%2218%22%20rx=%221%22%20fill=%22%233a34d2%22/%3E%3Crect%20x=%2213%22%20y=%2213%22%20width=%224%22%20height=%228%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%2219%22%20y=%2218%22%20width=%224%22%20height=%223%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../common/bench.css">
+<!-- Layout idea (the model reads / the board / the model answers) from a public "Claes plays Snake" demo; no code used -->
+<style>
+main.snakepage{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;max-width:1500px}
+@media (min-width:1150px){main.snakepage{grid-template-columns:minmax(230px,300px) minmax(0,1fr) minmax(300px,360px);align-items:start}}
+.reads .rd-state{font-size:18px;line-height:1.45;color:var(--ink);min-height:84px;white-space:pre-wrap}
+.reads .rd-state.mono{font:12.5px/1.3 var(--mono);white-space:pre}
+.reads h3{font-size:13px;margin:18px 0 8px}
+.pills{display:flex;flex-wrap:wrap;gap:6px}
+.pill{font-size:12.5px;padding:5px 10px;border-radius:8px;background:var(--surface);border:1px solid var(--line);color:var(--ink2);max-width:100%}
+.pill b{color:var(--ink)}
+.pill.played{border-color:var(--acc);background:var(--acc-soft);color:var(--ink)}
+.pill.oracle{outline:2px dashed var(--amber);outline-offset:1px}
+.pill.crash{opacity:.45;text-decoration:line-through}
+.hud{display:flex;justify-content:center;gap:clamp(18px,4vw,44px);margin-bottom:10px}
+.hud div{text-align:center}
+.hud .k{font-size:11px;letter-spacing:.14em;color:var(--ink3);text-transform:uppercase}
+.hud .v{font:800 clamp(30px,4vw,46px)/1.05 var(--sans);font-variant-numeric:tabular-nums}
+.hud .v.apples{color:#e8622a}
+.board{width:min(100%,calc(80vh - 90px));margin:0 auto;background:#0f1218;border-radius:18px;padding:10px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06),0 24px 40px -26px rgba(0,0,0,.65)}
+#cv{width:100%;height:auto;display:block;border-radius:10px}
+.abar{display:grid;grid-template-columns:64px 1fr 52px;gap:10px;align-items:center;margin:7px 0;font-size:14px}
+.abar .trk{height:16px;border-radius:5px;background:var(--surface);border:1px solid var(--line);overflow:hidden;position:relative}
+.abar .fl{position:absolute;inset:0 auto 0 0;width:0;background:var(--ink3);transition:width .18s}
+.abar.played .fl{background:var(--acc)}
+.abar.oracle .trk{outline:2px solid var(--amber);outline-offset:1px}
+.abar.crash{opacity:.42}
+.abar .pc{text-align:right;font-family:var(--mono)}
+.legend2{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--ink3);margin-top:8px}
+.legend2 i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.controls input[type=number]{width:70px}
+</style>
+</head>
+<body>
+<header><a href="/">&larr; Decida</a><h1>Snake</h1><span style="color:var(--ink3);font-size:13px">the model picks a direction each move; a BFS oracle labels every option</span></header>
+<main class="snakepage">
+<section class="panel reads">
+  <h2>The model reads</h2>
+  <div class="rd-state" id="rdState">Press Start. Each move the game describes the board in a sentence and asks one question.</div>
+  <h3 id="rdQ"></h3>
+  <div class="pills" id="rdPills"></div>
+  <p class="note" style="margin-top:18px">Variants: <b>raw board</b> gives only the grid; <b>features</b> describes the head, the apple and every option's outcome; <b>+ Best</b> also marks the oracle's move. Shield replaces a crashing move.</p>
+</section>
+<section class="panel">
+  <div class="hud">
+    <div><div class="k">Apples</div><div class="v apples" id="hApples">0</div></div>
+    <div><div class="k">Length</div><div class="v" id="hLen">3</div></div>
+    <div><div class="k">Move</div><div class="v" id="hMove">0</div></div>
+  </div>
+  <div class="board"><canvas id="cv" width="640" height="640" aria-label="Snake game"></canvas></div>
+  <div class="controls">
+    <label>Model <select id="model"></select></label>
+    <label>Board <select id="size"><option>10</option><option selected>12</option><option>16</option></select> &times;</label>
+    <label title="How much the option text gives away">Variant <select id="hints"><option value="none">raw board (no labels)</option><option value="nobest">features (safe/unsafe)</option><option value="full" selected>features + Best</option></select></label>
+    <label title="Replace a fatal move with the oracle's best move"><input type="checkbox" id="shield"> Shield</label>
+    <label title="Total moves across all games in a run. Empty or 0 turns the limit off: the snake plays until it dies and the run ends there. With a limit, each death starts a fresh game (the move counter restarts) until the limit is used.">Moves limit <input type="number" id="moves" value="300" min="0" max="100000" placeholder="off"></label>
+    <label title="Time per move; the snake glides between cells">Delay <input type="number" id="delay" value="140" min="0" max="1000"> ms</label>
+    <label title="A number replays that exact game; random picks a new one every run">Seed <input type="text" id="seed" value="random" size="8"></label>
+    <button id="go">Start run</button>
+  </div>
+  <div id="msg"></div>
+  <div id="report"></div>
+</section>
+<section class="panel">
+  <div id="answers">
+    <h2>The model answers</h2>
+    <div id="snBars"></div>
+    <div class="legend2"><span><i style="background:var(--acc)"></i>played move</span><span><i style="border:2px solid var(--amber);width:7px;height:7px"></i>oracle's favourite</span><span><i style="background:var(--ink3);opacity:.45"></i>would crash</span></div>
+  </div>
+  <div id="side" style="margin-top:6px"></div>
+</section>
+</main>
+<script type="module">
+import * as G from './game.js';
+import * as R from './render.js';
+import { pickSeed } from '../common/rng.js';
+import * as M from '../common/monitor.js';
+const { esc, pct, stat } = M;
+const $ = s => document.querySelector(s);
+const QP = new URLSearchParams(location.search);
+$('#side').innerHTML = M.panelHTML({ answer: false });
+const VIEW = 640, DPR = Math.min(2, window.devicePixelRatio || 1);
+const cv = $('#cv'), ctx = cv.getContext('2d');
+let K = DPR; cv.width = Math.round(VIEW * K); cv.height = Math.round(VIEW * K);
+function fit() { const want = Math.max(1, (cv.clientWidth || VIEW) * DPR / VIEW); if (Math.abs(want - K) / K < 0.06) return; K = want; cv.width = cv.height = Math.round(VIEW * K); }
+if (window.ResizeObserver) new ResizeObserver(fit).observe(cv);
+const say = (t, err) => { const m = $('#msg'); m.textContent = t || ''; m.className = t ? 'on' + (err ? ' err' : '') : ''; };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let S = null;
+
+async function loadModels() {
+  try {
+    const d = await (await fetch('/v1/models')).json();
+    const ready = d.models.filter(m => m.status === 'ready' || m.status === 'registered');
+    $('#model').innerHTML = ready.map(m => `<option value="${esc(m.name)}">${esc(m.name)} (${m.backend})</option>`).join('');
+    const want = QP.get('model') || d.default;
+    if (ready.some(m => m.name === want)) $('#model').value = want;
+    if (!ready.length) say('No models loaded. Start the server with --model.', true);
+  } catch (e) { say('Cannot reach the Decida server: ' + e.message, true); }
+}
+
+function newRun() {
+  const seed = pickSeed($('#seed').value), size = +$('#size').value, now = performance.now();
+  const limit = parseInt($('#moves').value, 10);
+  return { seed, size, game: G.newGame(seed, size), moves: 0, gameMoves: 0, gameNo: 1, budget: limit > 0 ? limit : Infinity, delay: Math.max(0, +$('#delay').value),
+    deaths: 0, food: 0, best: 0, causes: {}, lat: [], counts: {}, tokens: 0, cutTurns: 0, cutOptions: 0, stateCut: false, done: 0, agree: 0, toward: 0, unsafe: 0, saves: 0,
+    errors: 0, last: null, running: true, finished: false, t0: now, model: $('#model').value, hints: $('#hints').value, shield: $('#shield').checked,
+    anim: null, appleBorn: now, fx: [], deadAt: 0 };
+}
+
+async function turn() {
+  const g = S.game, { request, plan } = G.toRequest(g, S.hints), t0 = performance.now();
+  let j;
+  try {
+    const r = await fetch('/v1/systemone', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: S.model, ...request }) });
+    j = await r.json();
+    if (!r.ok) throw new Error((j.error && j.error.message) || r.statusText);
+  } catch (e) { S.errors++; say('Request failed: ' + e.message, true); if (S.errors >= 3) finish('errors'); return; }
+  const ms = performance.now() - t0;
+  S.lat.push(ms); S.done++; S.tokens += (j.usage && j.usage.input_tokens) || 0;
+  const cut = j.x_decida && j.x_decida.truncation;
+  if (cut && (cut.options_cut || cut.state_cut)) { S.cutTurns++; S.cutOptions = Math.max(S.cutOptions, cut.options_cut); S.stateCut = S.stateCut || cut.state_cut; }
+  const a = j.answers.move, top = a.choice;
+  S.counts[top] = (S.counts[top] || 0) + 1;
+  if (top === plan.best) S.agree++;
+  const ev = plan.evals[top];
+  if (ev.status === 'fatal') S.unsafe++; else if (ev.eating || (ev.dist != null && ev.dist < plan.cur)) S.toward++;
+  S.last = { probs: a.probabilities, choice: top, confidence: a.confidence, ms, oracle: plan.best, request, raw: j, plan, a };
+  let move = top;
+  if (S.shield && ev.status === 'fatal') { move = plan.best; S.saves++; }
+  const before = g.snake.map(c => ({ x: c.x, y: c.y })), foodBefore = g.food && { ...g.food }, scoreBefore = g.score, now = performance.now();
+  G.step(g, move); S.moves++; S.gameMoves++;
+  if (g.dead) { S.deaths++; S.food += g.score; S.best = Math.max(S.best, g.score); S.causes[g.cause] = (S.causes[g.cause] || 0) + 1; S.deadAt = now; S.anim = null; }
+  else {
+    S.anim = { prev: R.alignPrev(before, g.snake), t0: now, dur: S.delay > 0 ? Math.min(180, S.delay * 0.9) : 0 };
+    if (g.score > scoreBefore && foodBefore) { S.best = Math.max(S.best, g.score); S.appleBorn = now; burst(foodBefore, now); }
+  }
+}
+
+function burst(cell, now) { // a few red flecks where the apple was
+  for (let i = 0; i < 9; i++) { const a = (i / 9) * 2 * Math.PI + Math.random() * .5, sp = 30 + Math.random() * 45; S.fx.push({ x: cell.x + .5, y: cell.y + .5, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, born: now }); }
+}
+
+async function loop() {
+  while (S && S.running && S.moves < S.budget) {
+    await turn();
+    render();
+    if (S.game.won) { finish('won'); return; }
+    if (S.game.dead) {
+      if (S.budget === Infinity) { await sleep(S.delay ? 600 : 0); finish('died'); return; }  // no limit: one life, the run ends where the snake does
+      await sleep(S.delay ? 520 : 0);
+      if (!S.running || S.moves >= S.budget) break;
+      S.game = G.newGame(S.seed * 100 + S.deaths, S.size); S.gameMoves = 0; S.gameNo++;    // a new game: its move counter starts again
+      S.anim = null; S.appleBorn = performance.now(); S.deadAt = 0; render();
+    } else if (S.delay) await sleep(S.delay);
+  }
+  if (S && S.running) finish('done');
+}
+
+function finish(why) {
+  if (!S || S.finished) return;
+  S.finished = true; S.running = false; S.lastAt = performance.now(); $('#go').textContent = 'Start run';
+  const food = S.food + S.game.score, p50 = pct(S.lat, .5), p95 = pct(S.lat, .95), secs = (performance.now() - S.t0) / 1000;
+  const r = $('#report'); r.className = 'on';
+  r.innerHTML = `<b>${why === 'errors' ? 'Stopped: request errors' : why === 'stopped' ? 'Stopped' : why === 'died' ? `Died after ${S.gameMoves} moves with ${S.game.score} apple${S.game.score === 1 ? '' : 's'} (${S.game.cause})` : why === 'won' ? `The board is full: ${S.game.score} apples in ${S.gameMoves} moves` : `${food} apples eaten, ${S.deaths} death${S.deaths === 1 ? '' : 's'}, ${S.gameNo} game${S.gameNo === 1 ? '' : 's'} in ${S.moves} moves`}</b><br>
+    model <b>${esc(S.model)}</b> · board ${S.size}x${S.size} · seed ${S.seed} · variant ${S.hints} · shield ${S.shield ? 'on' : 'off'}<br>
+    ${S.done} decisions · agreement with oracle ${S.done ? Math.round(100 * S.agree / S.done) : 0}% · toward the apple ${S.done ? Math.round(100 * S.toward / S.done) : 0}% · fatal picks ${S.unsafe} · shield saves ${S.saves}${Object.keys(S.causes).length ? ' · deaths: ' + Object.entries(S.causes).map(([k, v]) => `${v} ${k}`).join(', ') : ''}<br>
+    latency p50 ${p50 == null ? 'n/a' : p50.toFixed(0)} ms, p95 ${p95 == null ? 'n/a' : p95.toFixed(0)} ms · ${(S.done / Math.max(.001, secs)).toFixed(1)} decisions/s`;
+}
+
+// ---------- the panels around the board ----------
+function renderReads() {
+  const l = S.last;
+  if (!l) return;
+  const st = l.request.state, mono = /\n/.test(st);
+  $('#rdState').className = 'rd-state' + (mono ? ' mono' : ''); $('#rdState').textContent = st;
+  $('#rdQ').textContent = l.request.questions.move.instructions;
+  const crit = l.request.questions.move.criteria;
+  $('#rdPills').innerHTML = Object.keys(crit).map(k => `<span class="pill${k === l.choice ? ' played' : ''}${k === l.oracle ? ' oracle' : ''}${l.plan.evals[k].status === 'fatal' ? ' crash' : ''}"><b>${esc(k)}</b>${crit[k] && crit[k] !== `Move ${k}.` ? ': ' + esc(crit[k]) : ''}</span>`).join('');
+}
+
+function renderBars() {
+  const l = S.last;
+  $('#snBars').innerHTML = G.MOVES.map(m => {
+    const p = l ? l.probs[m] || 0 : 0, crash = l && l.plan.evals[m].status === 'fatal';
+    return `<div class="abar${l && m === l.choice ? ' played' : ''}${l && m === l.oracle ? ' oracle' : ''}${crash ? ' crash' : ''}"><span>${m}</span><span class="trk"><span class="fl" style="width:${(p * 100).toFixed(1)}%"></span></span><span class="pc">${l ? (crash && p < .005 ? '–' : (p * 100).toFixed(0) + '%') : ''}</span></div>`;
+  }).join('');
+}
+
+function render() {
+  const g = S.game, p50 = pct(S.lat, .5), secs = Math.max(.001, ((S.finished ? S.lastAt || performance.now() : performance.now()) - S.t0) / 1000);
+  $('#hApples').textContent = g.score; $('#hLen').textContent = g.snake.length; $('#hMove').textContent = S.gameMoves; // this game only: a restart starts them again
+  const tile = (label, v, bad) => stat(label, v, bad);
+  $('#stats').innerHTML = [tile('Decisions/s', S.done ? (S.done / secs).toFixed(1) : '–'), tile('Latency last', S.lat.length ? Math.round(S.lat[S.lat.length - 1]) + ' ms' : '–'), tile('Latency p50', p50 == null ? '–' : Math.round(p50) + ' ms'),
+    tile('Agrees with oracle', S.done ? Math.round(100 * S.agree / S.done) + '%' : '–'), tile('Toward the apple', S.done ? Math.round(100 * S.toward / S.done) + '%' : '–'), tile('Best apples', S.best),
+    tile('Game', S.gameNo), tile('Total moves', S.budget === Infinity ? S.moves : `${S.moves}/${S.budget}`), tile('Total apples', S.food + g.score), tile('Deaths', S.deaths, S.deaths > 0), tile('Fatal picks', S.unsafe, S.unsafe > 0), tile('Shield saves', S.saves)].join('');
+  M.update({ lat: S.lat, tokens: S.tokens, counts: S.counts, done: S.done, last: S.last, cut: { turns: S.cutTurns, options: S.cutOptions, state: S.stateCut } });
+  renderReads(); renderBars();
+}
+
+// ---------- drawing: dark board, a smooth snake, a real apple ----------
+const ease = t => 1 - Math.pow(1 - t, 3), back = t => { const c = 1.70158; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+const mixc = (a, b, f) => a.map((v, i) => Math.round(v + (b[i] - v) * f));
+const HEAD = [88, 226, 160], TAIL = [18, 122, 88];
+
+function drawBoard(n, c) {
+  ctx.fillStyle = '#0f1218'; ctx.fillRect(0, 0, VIEW, VIEW);
+  ctx.fillStyle = 'rgba(255,255,255,.016)';
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if ((x + y) % 2 === 0) ctx.fillRect(x * c, y * c, c, c);
+  ctx.strokeStyle = 'rgba(255,255,255,.05)'; ctx.lineWidth = 1; ctx.beginPath();
+  for (let i = 1; i < n; i++) { ctx.moveTo(i * c, 0); ctx.lineTo(i * c, VIEW); ctx.moveTo(0, i * c); ctx.lineTo(VIEW, i * c); }
+  ctx.stroke();
+}
+
+function drawApple(cx, cy, r, now) {
+  ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.beginPath(); ctx.ellipse(cx, cy + r * 1.02, r * .95, r * .3, 0, 0, 7); ctx.fill();
+  const body = ctx.createRadialGradient(cx - r * .35, cy - r * .4, r * .1, cx, cy, r * 1.15);
+  body.addColorStop(0, '#ff8f78'); body.addColorStop(.45, '#e5352a'); body.addColorStop(1, '#8a1212');
+  ctx.fillStyle = body; ctx.beginPath(); ctx.ellipse(cx - r * .3, cy, r * .78, r * .93, 0, 0, 7); ctx.ellipse(cx + r * .3, cy, r * .78, r * .93, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(70,10,10,.55)'; ctx.beginPath(); ctx.ellipse(cx, cy - r * .86, r * .2, r * .1, 0, 0, 7); ctx.fill();          // the dimple at the top
+  ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.beginPath(); ctx.ellipse(cx - r * .48, cy - r * .38, r * .2, r * .11, -.7, 0, 7); ctx.fill(); // highlight
+  ctx.strokeStyle = '#6b4222'; ctx.lineWidth = Math.max(1.5, r * .12); ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(cx, cy - r * .86); ctx.quadraticCurveTo(cx + r * .05, cy - r * 1.25, cx + r * .28, cy - r * 1.42); ctx.stroke(); // stem
+  const leaf = ctx.createLinearGradient(cx + r * .1, cy - r * 1.3, cx + r * .75, cy - r * 1); leaf.addColorStop(0, '#7be07f'); leaf.addColorStop(1, '#2c8b3e');
+  ctx.fillStyle = leaf; ctx.beginPath(); ctx.ellipse(cx + r * .52, cy - r * 1.16, r * .42, r * .2, -.55, 0, 7); ctx.fill();
+}
+
+function drawSnake(g, c, now, dead) {
+  const u = S.anim && S.anim.dur ? Math.min(1, (now - S.anim.t0) / S.anim.dur) : 1;
+  const pts = R.lerpBody(S.anim ? S.anim.prev : g.snake, g.snake, ease(u)), path = R.smoothPath(pts, 8);
+  const shade = s => (dead ? mixc([170, 110, 110], [90, 60, 60], s) : mixc(HEAD, TAIL, s)), css = a => `rgb(${a[0]},${a[1]},${a[2]})`;
+  ctx.fillStyle = 'rgba(0,0,0,.32)'; for (const p of path) { ctx.beginPath(); ctx.arc(p.x * c + c * .05, p.y * c + c * .1, R.radiusAt(p.s, c) * .96, 0, 7); ctx.fill(); } // shadow
+  for (let i = path.length - 1; i >= 0; i--) { const p = path[i]; ctx.fillStyle = css(shade(p.s)); ctx.beginPath(); ctx.arc(p.x * c, p.y * c, R.radiusAt(p.s, c), 0, 7); ctx.fill(); }                // the body, tail first so the head overlaps it
+  ctx.fillStyle = 'rgba(255,255,255,.22)'; for (let i = 0; i < path.length; i += 2) { const p = path[i], r = R.radiusAt(p.s, c); ctx.beginPath(); ctx.arc(p.x * c - r * .22, p.y * c - r * .3, r * .42, 0, 7); ctx.fill(); } // gloss
+  ctx.fillStyle = 'rgba(0,0,0,.18)'; for (let i = 6; i < path.length - 4; i += 6) { const p = path[i], r = R.radiusAt(p.s, c); ctx.beginPath(); ctx.arc(p.x * c, p.y * c, r * .28, 0, 7); ctx.fill(); }   // a few scales
+  // head: eyes look where it is going, the tongue flicks
+  const h = pts[0], th = R.heading(pts), r = R.radiusAt(0, c) * 1.12, hx = h.x * c, hy = h.y * c, fx = Math.cos(th), fy = Math.sin(th), sx = -fy, sy = fx;
+  ctx.fillStyle = css(shade(0)); ctx.beginPath(); ctx.arc(hx, hy, r, 0, 7); ctx.fill();
+  const flick = Math.max(0, Math.sin(now / 700)), tl = r * (.5 + .9 * flick);
+  if (!dead && flick > .05) {
+    ctx.strokeStyle = '#e23b3b'; ctx.lineWidth = Math.max(1.5, c * .045); ctx.lineCap = 'round';
+    const bx = hx + fx * r * .95, by = hy + fy * r * .95, ex = bx + fx * tl, ey = by + fy * tl;
+    ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(ex, ey); ctx.moveTo(ex, ey); ctx.lineTo(ex + fx * r * .3 + sx * r * .25, ey + fy * r * .3 + sy * r * .25); ctx.moveTo(ex, ey); ctx.lineTo(ex + fx * r * .3 - sx * r * .25, ey + fy * r * .3 - sy * r * .25); ctx.stroke();
+  }
+  for (const side of [-1, 1]) {
+    const ex = hx + fx * r * .32 + sx * side * r * .5, ey = hy + fy * r * .32 + sy * side * r * .5;
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(ex, ey, r * .3, 0, 7); ctx.fill();
+    if (dead) { ctx.strokeStyle = '#222'; ctx.lineWidth = Math.max(1.5, r * .1); ctx.beginPath(); ctx.moveTo(ex - r * .16, ey - r * .16); ctx.lineTo(ex + r * .16, ey + r * .16); ctx.moveTo(ex + r * .16, ey - r * .16); ctx.lineTo(ex - r * .16, ey + r * .16); ctx.stroke(); }
+    else { ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(ex + fx * r * .1, ey + fy * r * .1, r * .15, 0, 7); ctx.fill(); }
+  }
+}
+
+function draw(now) {
+  ctx.setTransform(cv.width / VIEW, 0, 0, cv.width / VIEW, 0, 0);
+  const g = S.game, n = g.size, c = VIEW / n;
+  drawBoard(n, c);
+  if (g.food) {
+    const u = Math.min(1, (now - S.appleBorn) / 280), s = back(u), r = c * .32 * Math.max(0, s);
+    drawApple((g.food.x + .5) * c, (g.food.y + .5) * c + Math.sin(now / 430) * c * .015, r, now);
+  }
+  drawSnake(g, c, now, g.dead);
+  S.fx = S.fx.filter(f => now - f.born < 480);
+  for (const f of S.fx) { const t = (now - f.born) / 1000, a = 1 - (now - f.born) / 480; ctx.globalAlpha = Math.max(0, a); ctx.fillStyle = '#ff5a48'; ctx.beginPath(); ctx.arc((f.x) * c + f.vx * t, (f.y) * c + f.vy * t, c * .06, 0, 7); ctx.fill(); }
+  ctx.globalAlpha = 1;
+  if (g.dead && S.deadAt && Math.floor((now - S.deadAt) / 110) % 2 === 0) { ctx.fillStyle = 'rgba(220,40,40,.16)'; ctx.fillRect(0, 0, VIEW, VIEW); } // a red flash when it crashes
+}
+
+function frame(t) { requestAnimationFrame(frame); draw(t); }
+
+$('#go').addEventListener('click', () => {
+  if (S && S.running) { finish('stopped'); return; }
+  if (!$('#model').value) { say('Load a model first.', true); return; }
+  say(''); $('#report').className = ''; M.resetMonitor(); S = newRun(); $('#go').textContent = 'Stop'; render(); loop();
+});
+$('#size').addEventListener('change', () => { if (S && S.running) return; S = newRun(); S.running = false; S.t0 = performance.now(); render(); });
+for (const id of ['seed', 'hints', 'shield', 'moves', 'delay', 'size']) if (QP.get(id)) { const el = $('#' + id); if (el.type === 'checkbox') el.checked = QP.get(id) === '1'; else el.value = QP.get(id); }
+window.__snake = { get S() { return S; }, G };
+S = newRun(); S.running = false; render(); requestAnimationFrame(frame);
+loadModels().then(() => { if (QP.get('auto')) $('#go').click(); });
+</script>
+</body>
+</html>

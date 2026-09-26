@@ -1,0 +1,1 @@
+{"title": "Candies sorter", "description": "A pile of candies, five bowls, and chopsticks that carry each candy to the bowl the model picks. Batches of up to 256 candies per request: a throughput, cost and accuracy test.", "tags": ["throughput", "batching", "classification", "cost"]}

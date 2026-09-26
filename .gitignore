@@ -1,0 +1,15 @@
+artifacts/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+.ruff_cache/
+
+specs/
+reports/
+artifacts/
+.env
+dist/
+*.egg-info/
+node_modules/

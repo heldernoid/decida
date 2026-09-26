@@ -1,0 +1,1141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Decida: a local runtime for decision models</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2024%2024%22%3E%3Crect%20x=%221%22%20y=%2216%22%20width=%224%22%20height=%225%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%227%22%20y=%223%22%20width=%224%22%20height=%2218%22%20rx=%221%22%20fill=%22%233a34d2%22/%3E%3Crect%20x=%2213%22%20y=%2213%22%20width=%224%22%20height=%228%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%2219%22%20y=%2218%22%20width=%224%22%20height=%223%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EDF0F4; --surface:#F7F9FB; --raised:#FFFFFF;
+  --ink:#16203A; --ink2:#56627A; --ink3:#8792A7;
+  --line:#D5DCE5; --line2:#E5EAF0;
+  --acc:#3F3CD4; --acc-soft:#E3E3FA; --acc-ink:#FFFFFF;
+  --spec:#0A7F6B; --spec-bg:#D9F1EA;
+  --amber:#8F5B0C; --amber-bg:#FBE9C6; --amber-line:#E9C47A;
+  --red:#BE3A29; --red-bg:#F8DFDA; --green:#138556;
+  --code-bg:#17203A; --code-ink:#D9E0F0; --code-dim:#8591AE; --code-key:#A9A7FF; --code-str:#8FD9C3;
+  --shadow:0 1px 0 rgba(22,32,58,.05),0 10px 30px -18px rgba(22,32,58,.35);
+  --sans:"Schibsted Grotesk",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1423; --surface:#131A2B; --raised:#19223A;
+    --ink:#E7EBF4; --ink2:#9CA8C0; --ink3:#6B7892;
+    --line:#29344E; --line2:#202A41;
+    --acc:#8E8CFF; --acc-soft:#262A5C; --acc-ink:#0E1423;
+    --spec:#4ED3B4; --spec-bg:#123A35;
+    --amber:#F3BE58; --amber-bg:#3A2D12; --amber-line:#6E5420;
+    --red:#FF8A78; --red-bg:#3E1D1A; --green:#4ED39A;
+    --code-bg:#0A0F1C; --code-ink:#D9E0F0;
+    --shadow:0 1px 0 rgba(0,0,0,.2),0 12px 30px -18px rgba(0,0,0,.7);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1423; --surface:#131A2B; --raised:#19223A;
+  --ink:#E7EBF4; --ink2:#9CA8C0; --ink3:#6B7892;
+  --line:#29344E; --line2:#202A41;
+  --acc:#8E8CFF; --acc-soft:#262A5C; --acc-ink:#0E1423;
+  --spec:#4ED3B4; --spec-bg:#123A35;
+  --amber:#F3BE58; --amber-bg:#3A2D12; --amber-line:#6E5420;
+  --red:#FF8A78; --red-bg:#3E1D1A; --green:#4ED39A;
+  --code-bg:#0A0F1C; --code-ink:#D9E0F0;
+  --shadow:0 1px 0 rgba(0,0,0,.2),0 12px 30px -18px rgba(0,0,0,.7);
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:calc(env(safe-area-inset-top,0px) + 72px);scroll-behavior:smooth}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}*{transition:none!important;animation:none!important}}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;font-feature-settings:"tnum" 1}
+img,svg,canvas{max-width:100%}
+a{color:var(--acc);text-decoration:none}
+a:hover{text-decoration:underline}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:6px}
+code,pre,.mono{font-family:var(--mono);font-size:.86em}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+
+/* status strip */
+.strip{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.strip .wrap{display:flex;align-items:center;gap:14px;height:56px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;letter-spacing:-.01em;color:var(--ink)}
+.brand:hover{text-decoration:none}
+.glyph{display:flex;align-items:flex-end;gap:2px;height:18px}
+.glyph i{display:block;width:4px;border-radius:1px;background:var(--ink3)}
+.glyph i:nth-child(1){height:5px}.glyph i:nth-child(2){height:18px;background:var(--acc)}.glyph i:nth-child(3){height:8px}.glyph i:nth-child(4){height:3px}
+.chip{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 10px;border:1px solid var(--line);border-radius:999px;background:var(--surface);font-size:12.5px;color:var(--ink2);white-space:nowrap}
+.chip b{color:var(--ink);font-weight:600}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 22%,transparent)}
+.strip nav{margin-left:auto;display:flex;gap:4px}
+.strip nav a{color:var(--ink2);font-size:13.5px;padding:6px 10px;border-radius:8px;white-space:nowrap}
+.strip nav a:hover{background:var(--surface);color:var(--ink);text-decoration:none}
+.iconbtn{width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--line);border-radius:9px;background:var(--surface);cursor:pointer;color:var(--ink2)}
+.iconbtn:hover{color:var(--ink)}
+.hide-sm{}
+/* one section per page: the choice is made in <head> before anything paints (see the first script) */
+[data-page]{display:none}
+html:not([data-p]) [data-page]{display:revert}
+html[data-p="home"] [data-page="home"],html[data-p="models"] [data-page="models"],html[data-p="playground"] [data-page="playground"],html[data-p="under-the-hood"] [data-page="under-the-hood"],html[data-p="testbench"] [data-page="testbench"],html[data-p="api"] [data-page="api"]{display:revert}
+.strip nav a[aria-current=page]{background:var(--surface);color:var(--ink);font-weight:600}
+@media (max-width:1120px){.strip .spacer{margin-left:auto}.strip .wrap{flex-wrap:wrap;height:auto;padding-top:8px;padding-bottom:8px}.strip nav{order:9;width:100%;margin-left:0;overflow-x:auto;padding-bottom:2px}}
+@media (max-width:640px){.hide-sm{display:none!important}}
+
+/* hero */
+.hero{padding:64px 0 40px}
+.hero .wrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:56px;align-items:start}
+@media (max-width:960px){.hero .wrap{grid-template-columns:minmax(0,1fr);gap:36px}}
+h1{font-size:clamp(2.6rem,5.8vw,4.5rem);line-height:.98;letter-spacing:-.045em;font-weight:700;margin:6px 0 22px;text-wrap:balance}
+h1 .rule{display:block;height:10px;margin-top:22px;border-radius:3px;overflow:hidden;display:flex;gap:3px;max-width:420px}
+h1 .rule span{display:block;height:100%;border-radius:2px;background:var(--ink3);opacity:.35;transition:flex-grow .9s cubic-bezier(.2,.8,.2,1)}
+h1 .rule span:first-child{background:var(--acc);opacity:1}
+.lede{font-size:18px;line-height:1.55;color:var(--ink2);max-width:34em;margin:0 0 28px}
+.lede strong{color:var(--ink);font-weight:600}
+.cmd{display:flex;align-items:center;gap:10px;background:var(--code-bg);color:var(--code-ink);border-radius:12px;padding:12px 12px 12px 16px;max-width:560px}
+.cmd code{overflow-x:auto;min-width:0;flex:1;scrollbar-width:none}
+.cmd code{white-space:normal;overflow-wrap:anywhere;font-size:13.5px}   /* wrap: a command that scrolls sideways hides its own end */
+.cmd code .d{color:var(--code-dim)}
+.cmd button{margin-left:auto;flex:none;background:transparent;border:1px solid #33405e;color:var(--code-ink);border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer}
+.cmd button:hover{border-color:var(--code-dim)}
+.herolinks{display:flex;gap:18px;margin-top:22px;font-size:14.5px;flex-wrap:wrap}
+.herolinks a{font-weight:600}
+.scope{margin-top:34px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;max-width:520px;font-size:13px;color:var(--ink2);border-top:1px solid var(--line)}
+.scope div{padding:12px 16px 0 0}
+.scope b{display:block;color:var(--ink);font-weight:600;font-family:var(--mono);font-size:13px;margin-bottom:2px}
+@media (max-width:520px){.scope{grid-template-columns:minmax(0,1fr)}}
+
+/* panels */
+.panel{background:var(--raised);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow)}
+.demo{overflow:hidden}
+.demo-head{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line2);flex-wrap:wrap}
+.demo-head code{color:var(--ink2);font-size:12.5px}
+.seg{display:inline-flex;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:2px;gap:2px}
+.seg select{border:0;background:transparent;font:inherit;font-size:13px;font-weight:600;color:var(--ink);padding:5px 8px;border-radius:8px;cursor:pointer;max-width:200px}
+.seg button{border:0;background:transparent;padding:5px 10px;border-radius:8px;font-size:13px;color:var(--ink2);cursor:pointer;white-space:nowrap}
+.seg button[aria-pressed="true"]{background:var(--raised);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12);font-weight:600}
+.demo-head .seg{margin-left:auto}
+.presets{display:flex;gap:6px;padding:12px 14px 0;flex-wrap:wrap}
+.pill{border:1px solid var(--line);background:transparent;border-radius:999px;padding:4px 11px;font-size:12.5px;color:var(--ink2);cursor:pointer}
+.pill[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.state{margin:12px 14px 4px;padding:12px 14px;border-left:3px solid var(--line);background:var(--surface);border-radius:0 10px 10px 0;font-size:14px;color:var(--ink);min-height:48px}
+.state small{display:block;color:var(--ink3);font-size:11.5px;margin-bottom:3px}
+.answers{padding:6px 14px 4px}
+.q{padding:12px 0;border-top:1px solid var(--line2)}
+.q:first-child{border-top:0}
+.qhead{display:flex;align-items:baseline;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.qhead .k{font-weight:600;font-size:14px}
+.qhead .t{font-family:var(--mono);font-size:11px;color:var(--ink3);border:1px solid var(--line);border-radius:5px;padding:0 5px}
+.qhead .ins{color:var(--ink2);font-size:13px}
+.qhead .res{margin-left:auto;font-size:13px;color:var(--ink2)}
+.qhead .res b{color:var(--ink)}
+.bars{display:grid;grid-template-columns:minmax(70px,max-content) 1fr 48px;gap:5px 10px;align-items:center}
+.bars .lab{font-size:13px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px}
+.bars .track{display:block;height:10px;background:var(--line2);border-radius:3px;overflow:hidden}
+.bars .fill{display:block;height:100%;width:0;background:var(--ink3);opacity:.55;border-radius:3px;transition:width .7s cubic-bezier(.2,.8,.2,1)}
+.bars .num{font-size:12.5px;text-align:right;color:var(--ink2);font-variant-numeric:tabular-nums}
+.bars .top .lab,.bars .lab.top{color:var(--ink);font-weight:600}
+.bars .fill.top{background:var(--acc);opacity:1}
+.bars .num.top{color:var(--ink);font-weight:600}
+.noulbar{display:flex;height:22px;border-radius:6px;overflow:hidden;font-size:12px;font-weight:600}
+.noulbar span{display:flex;align-items:center;padding:0 8px;white-space:nowrap;transition:flex-basis .7s cubic-bezier(.2,.8,.2,1);min-width:0;overflow:hidden}
+.noulbar .yes{background:var(--acc);color:var(--acc-ink)}
+.noulbar .no{background:var(--line2);color:var(--ink2);justify-content:flex-end}
+.demo-foot{display:flex;align-items:center;gap:10px;padding:11px 14px;border-top:1px solid var(--line2);background:var(--surface);font-size:12.5px;color:var(--ink2);flex-wrap:wrap}
+.demo-foot b{color:var(--ink);font-weight:600}
+.warn{display:none;margin:0 14px 12px;padding:9px 12px;border:1px solid var(--amber-line);background:var(--amber-bg);color:var(--amber);border-radius:10px;font-size:13px}
+.warn.on{display:block}
+
+/* badges */
+.badge{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:6px;font-size:12px;font-weight:500;white-space:nowrap;border:1px solid transparent}
+.b-back{background:var(--surface);border-color:var(--line);color:var(--ink2);font-family:var(--mono);font-size:11.5px}
+.b-spec{background:var(--spec-bg);color:var(--spec)}
+.b-zero{background:var(--amber-bg);color:var(--amber);border-color:var(--amber-line)}
+.b-mid{background:var(--acc-soft);color:var(--acc)}
+
+/* sections */
+section.sec{padding:56px 0}
+.sechead{display:flex;align-items:flex-end;gap:24px;margin-bottom:22px;flex-wrap:wrap}
+h2{font-size:clamp(1.6rem,2.6vw,2.1rem);letter-spacing:-.03em;line-height:1.1;margin:0;font-weight:700}
+.sechead p{margin:8px 0 0;color:var(--ink2);max-width:40em}
+.sechead .right{margin-left:auto}
+h3{font-size:16px;margin:0 0 6px;letter-spacing:-.01em}
+
+/* models */
+.addbar{display:flex;gap:8px;padding:14px;border-bottom:1px solid var(--line2);flex-wrap:wrap;align-items:center}
+.field{flex:1 1 280px;display:flex;align-items:center;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:0 10px;height:40px;min-width:0}
+.field input{border:0;background:transparent;outline:none;width:100%;height:100%;font-family:var(--mono);font-size:13px}
+.field.alias{flex:0 1 170px}
+.field:focus-within{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
+.btn{height:40px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--raised);cursor:pointer;font-weight:600;font-size:14px;white-space:nowrap}
+.btn:hover{border-color:var(--ink3)}
+.btn.primary{background:var(--acc);border-color:var(--acc);color:var(--acc-ink)}
+.btn.primary:hover{filter:brightness(1.07)}
+.btn.sm{height:30px;padding:0 10px;font-size:12.5px;border-radius:8px;font-weight:500}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--ink2)}
+.btn.ghost:hover{background:var(--surface);color:var(--ink)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.examples{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:var(--ink3);padding:0 14px 12px;border-bottom:1px solid var(--line2)}
+.examples button{font-family:var(--mono);font-size:12px;border:1px dashed var(--line);background:transparent;border-radius:7px;padding:3px 8px;cursor:pointer;color:var(--ink2)}
+.examples button:hover{border-style:solid;color:var(--ink)}
+.detect{display:none;padding:12px 14px;border-bottom:1px solid var(--line2);background:var(--surface);font-size:13.5px}
+.detect.on{display:block}
+.detect ol{margin:0;padding:0;list-style:none;display:grid;gap:5px}
+.detect li{display:flex;gap:10px;align-items:baseline;color:var(--ink2)}
+.detect li .m{width:16px;flex:none;text-align:center;font-weight:700}
+.detect li.s-ok .m{color:var(--green)}
+.detect li.s-bad .m{color:var(--red)}
+.detect li.s-warn .m{color:var(--amber)}
+.detect li.s-warn{color:var(--amber)}
+.detect .verdict{margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+
+.mtable{overflow-x:auto}
+.mrow{display:grid;grid-template-columns:10px minmax(170px,1.4fr) minmax(160px,1.1fr) 56px 84px 96px 192px 206px;gap:12px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line2);min-width:1060px}
+.mrow:last-child{border-bottom:0}
+.mrow.head{font-size:12px;color:var(--ink3);padding-top:10px;padding-bottom:8px}
+.mname{font-weight:600;font-size:14.5px;display:flex;align-items:center;gap:8px}
+.mref{font-family:var(--mono);font-size:11.5px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mcell{font-size:13px;color:var(--ink2)}
+.mcell b{color:var(--ink);font-weight:600}
+.lat{font-variant-numeric:tabular-nums}
+.lat .p95{color:var(--ink3)}
+.radio{width:16px;height:16px;accent-color:var(--acc);cursor:pointer}
+.sdot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--green)}
+.sdot.loading{background:var(--acc);animation:pulse 1s infinite}
+.sdot.error{background:var(--red)}
+@keyframes pulse{50%{opacity:.3}}
+.prog{height:4px;background:var(--line2);border-radius:2px;overflow:hidden;margin-top:6px}
+.prog i{display:block;height:100%;background:var(--acc);width:0;transition:width .2s linear}
+.heat{display:flex;gap:2px;align-items:center}
+.heat i{width:7px;height:16px;border-radius:2px;background:var(--line2);transition:background .2s}
+.heat i.p{background:var(--green)}
+.heat i.f{background:var(--red)}
+.heat i.run{background:var(--acc)}
+.heat + span{font-size:12.5px;margin-left:8px;color:var(--ink2);font-variant-numeric:tabular-nums}
+.acts{display:flex;gap:4px;justify-content:flex-end}
+.empty{padding:34px 14px;text-align:center;color:var(--ink2)}
+.empty p{margin:0 0 12px}
+.legend{display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px;color:var(--ink2);padding:12px 14px;border-top:1px solid var(--line2);background:var(--surface);border-radius:0 0 16px 16px}
+
+/* playground */
+.pg{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:960px){.pg{grid-template-columns:minmax(0,1fr)}}
+.pg .panel{padding:16px}
+.label{display:block;font-size:12.5px;color:var(--ink2);margin:0 0 6px;font-weight:500}
+textarea,.inp,select{width:100%;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:9px 11px;font-size:13.5px;outline:none}
+textarea{resize:vertical;min-height:84px;line-height:1.5}
+textarea:focus,.inp:focus,select:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
+select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--ink3) 50%),linear-gradient(135deg,var(--ink3) 50%,transparent 50%);background-position:calc(100% - 15px) 55%,calc(100% - 10px) 55%;background-size:5px 5px;background-repeat:no-repeat;padding-right:28px}
+.row{display:flex;gap:8px;align-items:center}
+.qcard{border:1px solid var(--line);border-radius:12px;padding:12px;margin-top:10px;background:var(--raised)}
+.qcard .row{margin-bottom:8px}
+.qcard .inp{padding:7px 9px;font-size:13px}
+.qcard .key{font-family:var(--mono);flex:0 0 130px}
+.qcard select{flex:0 0 108px;padding:7px 26px 7px 9px;font-size:13px}
+.crit{display:grid;gap:5px;margin-top:6px}
+.crit .row{margin:0}
+.crit .num{font-size:11.5px;color:var(--ink3);width:18px;text-align:right;flex:none}
+.crit .opt{flex:0 0 120px;font-family:var(--mono)}
+.x{width:28px;height:28px;border-radius:7px;border:0;background:transparent;color:var(--ink3);cursor:pointer;flex:none;font-size:16px;line-height:1}
+.x:hover{background:var(--red-bg);color:var(--red)}
+.add{font-size:12.5px;color:var(--acc);background:none;border:0;cursor:pointer;padding:4px 0;font-weight:600}
+.addq{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:var(--ink2)}
+.runrow{display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap}
+.runrow .meta{font-size:12.5px;color:var(--ink2)}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line2);margin:-4px -16px 12px;padding:0 12px}
+.tabs button{border:0;background:none;padding:10px 10px;font-size:13px;color:var(--ink2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--acc);font-weight:600}
+pre.code{margin:0;background:var(--code-bg);color:var(--code-ink);border-radius:12px;padding:14px 16px;overflow:auto;max-height:340px;font-size:12.5px;line-height:1.55;position:relative}
+pre.code .k{color:var(--code-key)}pre.code .s{color:var(--code-str)}pre.code .c{color:var(--code-dim)}
+.codewrap{position:relative}
+.codewrap .copy{position:absolute;top:8px;right:8px;background:#233052;color:var(--code-ink);border:0;border-radius:7px;padding:4px 9px;font-size:12px;cursor:pointer}
+.activity{margin-top:14px}
+.activity ul{list-style:none;margin:0;padding:0;font-size:12.5px}
+.activity li{display:grid;grid-template-columns:62px minmax(0,1fr) auto 60px;gap:10px;padding:6px 0;border-top:1px solid var(--line2);color:var(--ink2);align-items:center}
+.activity li b{color:var(--ink);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.activity li .r{text-align:right;font-variant-numeric:tabular-nums}
+.muted{color:var(--ink3)}
+
+/* under the hood */
+.flow{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:0;counter-reset:st;position:relative}
+@media (max-width:960px){.flow{grid-template-columns:repeat(2,minmax(0,1fr));gap:0}}
+@media (max-width:520px){.flow{grid-template-columns:minmax(0,1fr)}}
+.st{padding:16px 16px 18px;border-right:1px solid var(--line2);position:relative;cursor:pointer;background:transparent;border-top:0;border-left:0;border-bottom:0;text-align:left;font:inherit;color:inherit}
+.st:last-child{border-right:0}
+@media (max-width:960px){.st{border-bottom:1px solid var(--line2)}}
+.st .n{font-family:var(--mono);font-size:12px;color:var(--ink3)}
+.st h3{margin:4px 0 4px;font-size:15px}
+.st p{margin:0;font-size:13px;color:var(--ink2);line-height:1.45}
+.st[aria-pressed="true"]{background:var(--acc-soft)}
+.st[aria-pressed="true"] .n{color:var(--acc)}
+.st::after{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:var(--acc);transform:scaleX(0);transform-origin:left;transition:transform .35s}
+.st.lit::after{transform:scaleX(1)}
+.stdetail{border-top:1px solid var(--line2);padding:16px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;font-size:14px;color:var(--ink2)}
+@media (max-width:800px){.stdetail{grid-template-columns:minmax(0,1fr)}}
+.stdetail h3{color:var(--ink)}
+.stdetail p{margin:0 0 8px}
+
+.adapters{display:grid;grid-template-columns:260px minmax(0,1fr);gap:0;overflow:hidden}
+@media (max-width:860px){.adapters{grid-template-columns:minmax(0,1fr)}}
+.alist{border-right:1px solid var(--line2);padding:8px}
+@media (max-width:860px){.alist{border-right:0;border-bottom:1px solid var(--line2);display:flex;gap:6px;overflow-x:auto}}
+.aitem{display:block;width:100%;text-align:left;border:0;background:transparent;border-radius:10px;padding:12px;cursor:pointer;color:inherit}
+.aitem .row{justify-content:space-between}
+.aitem p{margin:6px 0 0;font-size:12.5px;color:var(--ink2);line-height:1.4}
+.aitem[aria-selected="true"]{background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+@media (max-width:860px){.aitem{min-width:220px}}
+.abody{padding:20px;min-width:0}
+.abody > p{color:var(--ink2);margin:0 0 16px;max-width:60ch}
+.diag{display:grid;grid-template-columns:minmax(0,1fr) 36px minmax(0,1fr) 36px minmax(0,1fr);align-items:center;gap:0;margin-bottom:16px}
+@media (max-width:700px){.diag{grid-template-columns:minmax(0,1fr)}.diag .arrow{transform:rotate(90deg);height:28px}}
+.box{border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--surface);font-size:13px;min-height:128px}
+.box .ttl{font-size:12px;color:var(--ink3);margin-bottom:8px}
+.arrow{display:grid;place-items:center;color:var(--ink3)}
+.tok{display:inline-block;font-family:var(--mono);font-size:11.5px;padding:1px 5px;margin:2px 2px;border-radius:4px;background:var(--raised);border:1px solid var(--line)}
+.tok.hl{background:var(--acc);border-color:var(--acc);color:var(--acc-ink)}
+.vec{display:flex;gap:2px;margin:6px 0;align-items:flex-end;height:26px}
+.vec i{flex:1;background:var(--acc);opacity:.7;border-radius:1px}
+.facts{display:flex;gap:22px;flex-wrap:wrap;font-size:13px;color:var(--ink2);border-top:1px solid var(--line2);padding-top:14px}
+.facts b{display:block;color:var(--ink);font-size:14px}
+
+.simwrap{padding:16px}
+.simbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+.stats{display:flex;gap:22px;margin-left:auto;flex-wrap:wrap}
+.stat{font-size:12px;color:var(--ink2)}
+.stat b{display:block;font-size:22px;letter-spacing:-.02em;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.1}
+.stat.bad b{color:var(--red)}
+canvas#sim{display:block;width:100%;height:210px;border-radius:12px;background:var(--surface);border:1px solid var(--line2)}
+.simnote{font-size:12.5px;color:var(--ink3);margin-top:8px}
+.switch{display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:14px;font-weight:600;user-select:none}
+.switch input{position:absolute;opacity:0;width:1px;height:1px}
+.switch .sw{width:38px;height:22px;border-radius:999px;background:var(--line);position:relative;transition:background .2s}
+.switch .sw::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.switch input:checked + .sw{background:var(--acc)}
+.switch input:checked + .sw::after{transform:translateX(16px)}
+.switch input:focus-visible + .sw{outline:2px solid var(--acc);outline-offset:2px}
+
+.twocol{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;margin-top:18px}
+@media (max-width:900px){.twocol{grid-template-columns:minmax(0,1fr)}}
+.tree{font-family:var(--mono);font-size:12.5px;line-height:1.75;padding:16px;overflow-x:auto;white-space:pre;color:var(--ink2)}
+.tree b{color:var(--ink);font-weight:500}
+.tree .c{color:var(--ink3)}
+.cli{padding:16px}
+.cli pre.code{max-height:none}
+
+/* benches */
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+@media (max-width:960px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:600px){.grid{grid-template-columns:minmax(0,1fr)}}
+.bench{display:flex;flex-direction:column;overflow:hidden}
+.thumb{height:128px;background:var(--surface);border-bottom:1px solid var(--line2);display:grid;place-items:center;color:var(--ink3)}
+.thumb svg{width:100%;height:100%}
+.bench .body{padding:14px;display:flex;flex-direction:column;gap:8px;flex:1}
+.bench .body p{margin:0;color:var(--ink2);font-size:13.5px;flex:1}
+.tags{display:flex;gap:5px;flex-wrap:wrap}
+.tag{font-size:11.5px;color:var(--ink2);background:var(--surface);border:1px solid var(--line2);border-radius:5px;padding:1px 6px}
+.bench .row select{padding:6px 26px 6px 9px;font-size:13px;flex:1;min-width:0}
+
+/* api */
+.api{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:640px}
+th{text-align:left;font-weight:500;color:var(--ink3);font-size:12px;padding:10px 14px;border-bottom:1px solid var(--line2)}
+td{padding:10px 14px;border-bottom:1px solid var(--line2);vertical-align:top;color:var(--ink2)}
+tr:last-child td{border-bottom:0}
+td code{color:var(--ink);font-size:12.5px;white-space:nowrap}
+.verb{display:inline-block;width:52px;font-family:var(--mono);font-size:11px;font-weight:600}
+.verb.get{color:var(--spec)}.verb.post{color:var(--acc)}.verb.del{color:var(--red)}
+.mcp{display:flex;gap:6px;flex-wrap:wrap;padding:14px;border-top:1px solid var(--line2);align-items:center;font-size:13px;color:var(--ink2)}
+
+footer{padding:40px 0 60px;border-top:1px solid var(--line);margin-top:30px;color:var(--ink2);font-size:13.5px}
+footer .wrap{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px}
+@media (max-width:800px){footer .wrap{grid-template-columns:minmax(0,1fr)}}
+footer h3{color:var(--ink)}
+footer p{margin:0}
+
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:13.5px;opacity:0;pointer-events:none;transition:all .25s;z-index:50;max-width:calc(100% - 32px)}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+<script>
+/* which page this URL is: shared by the router below. Old in-page links (/#bench) map to their page. */
+var PAGES={'/':'home','/models':'models','/playground':'playground','/under-the-hood':'under-the-hood','/testbench':'testbench','/api':'api'};
+var LEGACY={'#models':'/models','#playground':'/playground','#hood':'/under-the-hood','#bench':'/testbench','#api':'/api'};
+function pageKey(path){var p=path.length>1?path.replace(/\/+$/,''):path;return PAGES[p]||'home'}
+(function(){var p=location.pathname;if(p==='/'&&LEGACY[location.hash]){p=LEGACY[location.hash];history.replaceState({},'',p)}document.documentElement.setAttribute('data-p',pageKey(p))})();
+</script>
+</head>
+<body>
+
+<header class="strip">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Decida home">
+      <span class="glyph" aria-hidden="true"><i></i><i></i><i></i><i></i></span>decida
+    </a>
+    <span class="chip hide-sm mono" id="srv" title="Server URL">localhost:8000</span>
+    <span class="chip hide-sm" id="devchip" title="Device"></span>
+    <span class="chip" id="healthchip"><span class="dot" aria-hidden="true"></span><span id="healthtxt">Healthy</span></span>
+    <nav aria-label="Sections">
+      <a href="/models">Models</a><a href="/playground">Playground</a><a href="/under-the-hood">Under the hood</a><a href="/testbench">Testbench</a><a href="/api">API</a>
+    </nav>
+    <span class="spacer"></span>
+    <button class="iconbtn" id="theme" aria-label="Switch theme" title="Switch theme">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.2" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.8a6.2 6.2 0 0 1 0 12.4z" fill="currentColor"/></svg>
+    </button>
+  </div>
+</header>
+
+<main id="top">
+<section class="hero" data-page="home">
+  <div class="wrap">
+    <div>
+      <h1>Decisions in one forward pass.
+        <span class="rule" aria-hidden="true" id="heroRule"><span style="flex-grow:62"></span><span style="flex-grow:24"></span><span style="flex-grow:10"></span><span style="flex-grow:4"></span></span>
+      </h1>
+      <p class="lede">Decida is a small local runtime for <strong>System One models</strong>. Point it at a Hugging Face id, and it serves typed questions over one REST API and MCP. Every answer is a probability distribution, never generated text, so it is fast, cheap and always valid.</p>
+      <div class="cmd"><code><span class="d">$</span> decida serve --model decidabert=helmo/DecidaBERT-large</code><button data-copy="decida serve --model decidabert=helmo/DecidaBERT-large">Copy</button></div>
+      <div class="herolinks"><a href="/playground">Open the playground</a><a href="/under-the-hood">See how a request is served</a><a href="/testbench">Watch a model play</a></div>
+      <div class="scope">
+        <div><b>choice</b>pick among 2–255 options</div>
+        <div><b>score</b>rate on 2–32 levels</div>
+        <div><b>noul</b>is a statement true?</div>
+      </div>
+    </div>
+
+    <div class="panel demo" aria-label="Live decision demo">
+      <div class="demo-head">
+        <code>POST /v1/systemone</code>
+        <div class="seg" role="group" aria-label="Model" id="heroModels">
+          <button aria-pressed="true" data-m="decidabert">decidabert</button>
+          <button aria-pressed="false" data-m="qwen">qwen</button>
+        </div>
+      </div>
+      <div class="presets" role="group" aria-label="Example" id="heroPresets"></div>
+      <div class="state" id="heroState"></div>
+      <div class="answers" id="heroAnswers"></div>
+      <div class="warn" id="heroWarn">Qwen3-0.6B is a generalist read zero-shot through option-letter logits. Its probabilities look confident but are not calibrated; notice its pull toward option A.</div>
+      <div class="demo-foot" id="heroFoot"></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="models" data-page="models">
+  <div class="wrap">
+    <div class="sechead">
+      <div>
+        <h2>Your models</h2>
+        <p>Every loaded model answers the same requests. What differs is how much you should trust it, so each row says whether the model was trained for decisions or is being read zero-shot.</p>
+      </div>
+    </div>
+    <div class="panel">
+      <form class="addbar" id="addForm" autocomplete="off">
+        <label class="field"><span class="sr">Hugging Face id or local path</span><input id="addRef" placeholder="Hugging Face id or local path, e.g. Qwen/Qwen3.5-0.8B" spellcheck="false"></label>
+        <label class="field alias"><span class="sr">Alias (optional)</span><input id="addAlias" placeholder="alias (optional)" spellcheck="false"></label>
+        <button class="btn primary" type="submit">Add model</button>
+      </form>
+      <div class="examples">Try:
+        <button type="button" data-ex="Qwen/Qwen3.5-0.8B">Qwen/Qwen3.5-0.8B</button>
+        <button type="button" data-ex="HuggingFaceTB/SmolLM2-360M-Instruct">HuggingFaceTB/SmolLM2-360M-Instruct</button>
+        <button type="button" data-ex="helmo/laya:typed-decisions">helmo/laya:typed-decisions</button>
+      </div>
+      <div class="detect" id="detect" aria-live="polite"></div>
+      <div class="mtable">
+        <div class="mrow head" aria-hidden="true">
+          <span></span><span>Model</span><span>Backend and quality</span><span>Accuracy</span><span>Latency p50 / p95</span><span>Memory</span><span>Smoke checks</span><span style="text-align:right">Default and actions</span>
+        </div>
+        <div id="mlist"></div>
+      </div>
+      <div class="legend">
+        <span><span class="badge b-spec">specialist · calibrated</span> trained decision heads, temperature-calibrated</span>
+        <span><span class="badge b-mid">zero-shot · contrastive</span> frozen encoder, trained projection heads</span>
+        <span><span class="badge b-zero">zero-shot · uncalibrated</span> any causal LM, read from letter logits</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="playground" data-page="playground">
+  <div class="wrap">
+    <div class="sechead">
+      <div>
+        <h2>Playground</h2>
+        <p>Write a state, ask typed questions, read the full distribution. Every run produces the exact request you would send, ready to copy.</p>
+      </div>
+    </div>
+    <div class="pg">
+      <div class="panel">
+        <div class="row" style="margin-bottom:12px;flex-wrap:wrap">
+          <div style="flex:1;min-width:180px"><label class="label" for="pgModel">Model</label><select id="pgModel"></select></div>
+          <div style="flex:2;min-width:220px"><span class="label">Preset</span><div class="seg" id="pgPresets" role="group" aria-label="Preset"></div></div>
+        </div>
+        <label class="label" for="pgState">State</label>
+        <textarea id="pgState" rows="3"></textarea>
+        <div id="pgQs"></div>
+        <div class="addq">Add a question:
+          <button class="btn sm" data-addq="choice" type="button">choice</button>
+          <button class="btn sm" data-addq="score" type="button">score</button>
+          <button class="btn sm" data-addq="noul" type="button">noul</button>
+        </div>
+        <div class="runrow">
+          <button class="btn primary" id="pgRun" type="button">Run</button>
+          <span class="meta" id="pgMeta">One forward pass per question batch. Press Ctrl+Enter to run.</span>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="tabs" role="tablist" aria-label="Output">
+          <button role="tab" aria-selected="true" data-tab="answers">Answers</button>
+          <button role="tab" aria-selected="false" data-tab="json">JSON</button>
+          <button role="tab" aria-selected="false" data-tab="curl">curl</button>
+          <button role="tab" aria-selected="false" data-tab="python">Python</button>
+          <button role="tab" aria-selected="false" data-tab="response">Response</button>
+        </div>
+        <div id="pgOut"></div>
+        <div class="activity">
+          <span class="label">Recent requests</span>
+          <ul id="activity"></ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="hood" data-page="under-the-hood">
+  <div class="wrap">
+    <div class="sechead">
+      <div>
+        <h2>What happens to a request</h2>
+        <p>Six steps between your JSON and a distribution. Select a step to see what it guarantees; the backends below are where the models differ.</p>
+      </div>
+      <div class="right"><button class="btn" id="traceBtn" type="button">Trace a request</button></div>
+    </div>
+    <div class="panel">
+      <div class="flow" id="flow"></div>
+      <div class="stdetail" id="stdetail"></div>
+    </div>
+
+    <h3 style="margin:34px 0 12px;font-size:18px">Three ways to read a decision</h3>
+    <div class="panel adapters">
+      <div class="alist" role="tablist" aria-label="Backends" id="alist"></div>
+      <div class="abody" id="abody"></div>
+    </div>
+
+    <h3 style="margin:34px 0 12px;font-size:18px">Why batching matters (an illustration, not a measurement)</h3>
+    <div class="panel simwrap">
+      <div class="simbar">
+        <label class="switch"><input type="checkbox" id="batchT" checked><span class="sw" aria-hidden="true"></span>Micro-batching</label>
+        <button class="btn sm" id="simPlay" type="button">Pause</button>
+        <div class="stats" aria-live="off">
+          <div class="stat"><b id="sP50">0</b>p50 ms</div>
+          <div class="stat" id="sP95w"><b id="sP95">0</b>p95 ms</div>
+          <div class="stat"><b id="sQ">0</b>queued</div>
+          <div class="stat" id="sDw"><b id="sD">0</b>discarded</div>
+        </div>
+      </div>
+      <canvas id="sim" aria-label="Requests arriving, queueing and being served by the GPU"></canvas>
+      <p class="simnote">Three real-time games send about 60 decisions a second to one model (shown 4× slower). One at a time, the GPU falls behind, the queue grows and late answers are thrown away: that is the p95 of 330 ms we measured on Apple GPU while p50 looked fine. Batching folds the queue into one forward pass.</p>
+    </div>
+
+    <div class="twocol">
+      <div class="panel">
+        <div style="padding:16px 16px 0"><h3>Source layout</h3><p class="muted" style="margin:0;font-size:13px">Runtime, registry and testbench. Nothing that trains or generates data.</p></div>
+        <div class="tree" id="tree"></div>
+      </div>
+      <div class="panel cli">
+        <h3>Command line</h3>
+        <p class="muted" style="margin:0 0 12px;font-size:13px">The same verbs as the REST API.</p>
+        <div class="codewrap"><pre class="code" id="cliCode"></pre></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="bench" data-page="testbench">
+  <div class="wrap">
+    <div class="sechead">
+      <div>
+        <h2>Testbench</h2>
+        <p>Averages hide how a model behaves. Each bench is a static page that talks only to the public API, with a live monitor of every decision, its distribution and its latency.</p>
+      </div>
+    </div>
+    <div class="grid" id="benches"></div>
+  </div>
+</section>
+
+<section class="sec" id="api" data-page="api">
+  <div class="wrap">
+    <div class="sechead">
+      <div>
+        <h2>One API</h2>
+        <p>The home page, the benches and your code are all thin clients of the same endpoints. The wire format is compatible with TypeSafe's Jev <code>POST /v1/systemone</code>. Every endpoint, with its request and response models, is also in the interactive <a href="/docs">API docs</a> (<a href="/openapi.json">openapi.json</a>).</p>
+      </div>
+    </div>
+    <div class="panel api">
+      <table>
+        <thead><tr><th>Endpoint</th><th>What it does</th></tr></thead>
+        <tbody id="apiRows"></tbody>
+      </table>
+      <div class="mcp">MCP tools from <code>decida mcp</code>:
+        <span class="badge b-back">decide</span><span class="badge b-back">classify_text</span><span class="badge b-back">gate_tool_call</span><span class="badge b-back">triage_failure</span><span class="badge b-back">vet_dependency</span>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div><h3>Decida runs models</h3><p>It loads, serves and tests them. Training and data generation are outside its scope. It can also forward requests to a hosted endpoint you choose, under a spend cap you set.</p></div>
+    <div><h3>Safe by default</h3><p>Weights load as tensors only, from safetensors or weights-only files. Code that ships inside a model repo is never run, and third-party code keeps its licence file beside it.</p></div>
+    <div><h3>About this page</h3><p>Served by your own Decida server. The playground, the smoke checks and the benches call the models you have loaded, live. The batching animation under Under the hood is an illustration.</p></div>
+  </div>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+"use strict";
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('on');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('on'),2600)}
+function copy(text){try{navigator.clipboard.writeText(text).then(()=>toast('Copied to clipboard'),()=>toast('Copy failed: select the text instead'))}catch(e){toast('Copy failed: select the text instead')}}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-copy]');if(b)copy(b.dataset.copy)});
+
+/* theme */
+$('#theme').addEventListener('click',()=>{
+  const root=document.documentElement;
+  const cur=root.dataset.theme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+  root.dataset.theme=cur==='dark'?'light':'dark';
+  try{localStorage.setItem('decida-theme',root.dataset.theme)}catch(e){}
+  readColors();
+});
+try{const t=localStorage.getItem('decida-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
+
+/* ---------- catalogue ---------- */
+const api=async(path,opts={})=>{
+  const r=await fetch(path,{headers:{'content-type':'application/json'},...opts});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw Object.assign(new Error((j.error&&j.error.message)||r.statusText),{status:r.status,body:j});
+  return j;
+};
+const TASKS=['Billing routing','Technical routing','Sales routing','Positive sentiment','Negative sentiment','Tool gate: destructive','Churn risk high','Churn risk low','Urgency high','Urgency low','Refund: yes','Refund: no','Deadline: yes','Deadline: no'];
+const QUALITY={encoder:['b-spec','specialist · calibrated'],clm:['b-mid','zero-shot · contrastive'],lm:['b-zero','zero-shot · uncalibrated'],remote:['b-mid','hosted · third-party']};
+const quality=b=>QUALITY[b]||['b-zero',String(b)]; // an unknown backend must never blank the page
+let DEVICE={kind:'…',name:'',total:0,used:0};
+let models=[];
+let defaultModel=null;
+function fromApi(m,prev){return {name:m.name,ref:m.ref,backend:m.backend,status:m.status==='registered'?'idle':m.status,progress:m.status==='ready'?100:(prev&&prev.progress)||0,
+  p50:m.p50_latency_ms,p95:m.p95_latency_ms,license:m.license||'unknown',spent:m.spent_usd==null?null:m.spent_usd,budget:m.budget_usd,mem:null,params:'',acc:null,error:m.error,checks:prev?prev.checks:null,running:prev?prev.running:0,phase:prev&&prev.phase}}
+async function refreshModels(){
+  try{
+    const [d,dev]=await Promise.all([api('/v1/models'),api('/v1/device')]);
+    const old=new Map(models.map(m=>[m.name,m]));
+    models=d.models.map(m=>fromApi(m,old.get(m.name)));
+    defaultModel=d.default;
+    DEVICE={kind:dev.device.toUpperCase(),name:dev.name,total:dev.memory_total_mb||0,used:dev.memory_used_mb||0};
+    const ready=models.filter(m=>m.status==='ready');
+    const heroList=[...ready.filter(m=>m.backend!=='remote'),...ready.filter(m=>m.backend==='remote')];   // local models first, hosted ones after
+    $('#heroModels').innerHTML=heroList.length>3
+      ?`<select id="heroModelSel" aria-label="Model">${heroList.map(m=>`<option value="${esc(m.name)}"${m.name===hero.model?' selected':''}>${esc(m.name)}${m.backend==='remote'?' (hosted)':''}</option>`).join('')}</select>`
+      :heroList.map(m=>`<button aria-pressed="${m.name===hero.model}" data-m="${esc(m.name)}">${esc(m.name)}</button>`).join('');
+    const local=ready.filter(m=>m.backend!=='remote');
+    if(!ready.some(m=>m.name===hero.model)){hero.model=(local[0]||ready[0]||{}).name||null}
+    renderModels();
+  }catch(e){toast('Cannot reach the Decida server: '+e.message)}
+}
+const GROUPS={
+ money:'invoice invoices charged charge charges refund refunds payment billing bill paid card subscription cost twice',
+ tech:'bug bugs crash crashes error errors outage outages down broken login timeout technical failing fails 500',
+ anger:'angry furious nobody terrible worst ridiculous unacceptable again frustrated frustration very answers',
+ urgent:'urgent asap now immediately today deadline tonight urgency nobody phone',
+ leave:'cancel leaving switch competitor churn quit export exports leave preparing risk 34 inactive',
+ danger:'rm delete drop force forced prod production sudo wipe push destructive irreversible destroy protected main',
+ safe:'read ls list view get cat status safe reversible readonly',
+ sales:'demo pricing quote seats buy upgrade plan sales',
+ people:'manager leave holiday payroll hr colleague'
+};
+const G={};for(const g in GROUPS)for(const w of GROUPS[g].split(' '))(G[w]=G[w]||[]).push(g);
+const STOP=new Set('the a an is it to of and or for this that on in be my me we our your you with no not at by as are was can should which what how who does do has have will from team handle'.split(' '));
+const toks=s=>(String(s).toLowerCase().match(/[a-z0-9]+/g)||[]).filter(w=>!STOP.has(w));
+function feats(s){const f=new Map();for(const w of toks(s)){f.set(w,(f.get(w)||0)+1);for(const g of (G[w]||[]))f.set('#'+g,(f.get('#'+g)||0)+1.4)}if(/!/.test(s)){f.set('#anger',(f.get('#anger')||0)+.8);f.set('#urgent',(f.get('#urgent')||0)+.8)}return f}
+function aff(state,text){const a=feats(state),b=feats(text);let s=0;for(const [k,v] of b)if(a.has(k))s+=Math.min(a.get(k),2)*(k[0]==='#'?1:.7)*Math.min(v,1.5);return s}
+function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0)/4294967295}
+function softmax(a){const m=Math.max(...a);const e=a.map(x=>Math.exp(x-m));const z=e.reduce((p,c)=>p+c,0);return e.map(x=>x/z)}
+const PROFILE={encoder:{k:1.3,noise:.3,bias:0},clm:{k:1.7,noise:.6,bias:.25},lm:{k:.55,noise:1.0,bias:1.2}};
+const r3=x=>Math.round(x*1000)/1000;
+
+async function decide(modelName,state,questions){
+  return api('/v1/systemone',{method:'POST',body:JSON.stringify({model:modelName,state,questions})});
+}
+
+/* ---------- presets ---------- */
+const PRESETS={
+ billing:{label:'Billing routing',state:'Customer: my invoice was charged twice and nobody answers the phone!',
+  questions:{department:{type:'choice',instructions:'Which team should handle this?',criteria:{billing:'Charges, invoices, refunds',technical:'Bugs and outages',sales:'Pricing, demos, new seats'}},
+   frustration:{type:'score',instructions:'How frustrated is the customer?',criteria:['Calm','Frustrated','Very angry']},
+   urgent:{type:'noul',instructions:'Is this urgent and needs an answer today?'}}},
+ churn:{label:'Churn risk',state:'Account: Northwind, 42 seats. Last login 34 days ago. Asked how to export all data and for pricing of a competitor-style plan. Support tickets tripled this quarter.',
+  questions:{churn:{type:'score',instructions:'How likely is this account to churn?',criteria:['Low','Medium','High','Critical']},
+   action:{type:'choice',instructions:'What should the account team do?',criteria:{nothing:'No action needed',discount:'Offer a renewal discount on pricing',call:'Account manager calls about the export and churn risk this week'}},
+   leaving:{type:'noul',instructions:'Is the customer preparing to leave or switch?'}}},
+ gate:{label:'Tool-call gate',state:'Agent wants to run: git push --force origin main (repo: payments-service, branch protected)',
+  questions:{gate:{type:'choice',instructions:'Should this tool call run?',criteria:{allow:'Safe, read-only or reversible',confirm:'Needs a human to confirm first',block:'Destructive or irreversible, force push to protected main'}},
+   destructive:{type:'noul',instructions:'Could this command destroy or overwrite work?'}}}
+};
+
+/* ---------- answer rendering ---------- */
+function renderAnswer(key,q,a,animate){
+  const d=document.createElement('div');d.className='q';
+  let res='',body='';
+  if(a.type==='choice'){
+    res=`<b>${esc(a.choice)}</b> · confidence ${a.confidence.toFixed(2)}`;
+    const opts=Object.keys(a.probabilities);
+    body='<div class="bars">'+opts.map(o=>{const p=a.probabilities[o],t=o===a.choice?' top':'';return `<span class="lab${t}" title="${esc(o)}">${esc(o)}</span><span class="track"><span class="fill${t}" data-w="${p*100}"></span></span><span class="num${t}">${p.toFixed(2)}</span>`}).join('')+'</div>';
+  }else if(a.type==='score'){
+    const L=Object.keys(a.legend).length;let bi=0;Object.values(a.probabilities).forEach((v,i,arr)=>{if(v>arr[bi])bi=i});
+    res=`score <b>${a.score.toFixed(2)}</b> of ${L-1}`;
+    body='<div class="bars">'+Object.keys(a.legend).map((i,idx)=>{const p=a.probabilities[i],t=idx===bi?' top':'';return `<span class="lab${t}">${idx} · ${esc(a.legend[i])}</span><span class="track"><span class="fill${t}" data-w="${p*100}"></span></span><span class="num${t}">${p.toFixed(2)}</span>`}).join('')+'</div>';
+  }else{
+    res=`p(true) <b>${a.noul.toFixed(2)}</b>`;
+    body=`<div class="noulbar"><span class="yes" data-f="${a.noul}" style="flex:0 0 50%">${a.noul>=.14?'true '+a.noul.toFixed(2):''}</span><span class="no" data-f="${1-a.noul}" style="flex:1 1 50%">${a.noul<=.86?'false '+(1-a.noul).toFixed(2):''}</span></div>`;
+  }
+  d.innerHTML=`<div class="qhead"><span class="k">${esc(key)}</span><span class="t">${a.type}</span><span class="ins">${esc(q.instructions||'')}</span><span class="res">${res}</span></div>${body}`;
+  const apply=()=>{$$('.fill',d).forEach(f=>f.style.width=f.dataset.w+'%');const y=$('.yes',d);if(y){y.style.flexBasis=(a.noul*100)+'%'}};
+  if(animate&&!reduced)requestAnimationFrame(()=>requestAnimationFrame(apply));else apply();
+  return d;
+}
+
+/* ---------- hero ---------- */
+const hero={model:null,preset:'billing'};
+$('#heroPresets').innerHTML=Object.entries(PRESETS).map(([k,v])=>`<button class="pill" data-p="${k}" aria-pressed="${k===hero.preset}">${v.label}</button>`).join('');
+async function runHero(){
+  const P=PRESETS[hero.preset];
+  $('#heroState').innerHTML=`<small>state</small>${esc(P.state)}`;
+  const box=$('#heroAnswers');
+  if(!models.some(m=>m.name===hero.model&&m.status==='ready')){box.innerHTML='<div class="empty"><p>Load a model below to see live answers.</p></div>';return}
+  let r;try{r=await decide(hero.model,P.state,P.questions)}catch(e){box.innerHTML=`<div class="empty"><p>${esc(e.message)}</p></div>`;return}
+  box.innerHTML='';
+  for(const [k,q] of Object.entries(P.questions))box.appendChild(renderAnswer(k,q,r.answers[k],true));
+  const be=(models.find(m=>m.name===hero.model)||{backend:'lm'}).backend;const [cls,lab]=quality(be);
+  $('#heroFoot').innerHTML=`<span class="badge b-back">${be}</span><span class="badge ${cls}">${lab}</span><span><b>${r.latency_ms} ms</b> for ${Object.keys(P.questions).length} questions</span><span>${r.usage.input_tokens} input tokens, <b>0</b> generated</span>`;
+  $('#heroWarn').classList.toggle('on',be==='lm');
+  // hero rule mirrors first choice distribution
+  const first=Object.values(r.answers).find(a=>a.type==='choice');
+  if(first){const ps=Object.values(first.probabilities).sort((a,b)=>b-a);const spans=$$('#heroRule span');spans.forEach((s,i)=>{s.style.flexGrow=Math.max(.02,(ps[i]||0))*100;s.style.display=i<ps.length?'block':'none'})}
+  logActivity(hero.model,r,P.questions);
+}
+$('#heroPresets').addEventListener('click',e=>{const b=e.target.closest('[data-p]');if(!b)return;hero.preset=b.dataset.p;$$('#heroPresets .pill').forEach(x=>x.setAttribute('aria-pressed',x===b));runHero()});
+$('#heroModels').addEventListener('change',e=>{if(e.target.id!=='heroModelSel')return;hero.model=e.target.value;runHero()});
+$('#heroModels').addEventListener('click',e=>{const b=e.target.closest('[data-m]');if(!b)return;hero.model=b.dataset.m;$$('#heroModels button').forEach(x=>x.setAttribute('aria-pressed',x===b));runHero()});
+
+/* ---------- models panel ---------- */
+function devUsed(){return DEVICE.used}
+function renderDevice(){
+  $('#devchip').innerHTML=`<b>${DEVICE.kind}</b> ${DEVICE.name} · ${(devUsed()/1024).toFixed(1)} GB in use${DEVICE.total?' / '+Math.round(DEVICE.total/1024)+' GB':''}`;
+  const ready=models.filter(m=>m.status==='ready').length;
+  $('#healthtxt').textContent=`${ready} model${ready===1?'':'s'} ready`;
+}
+function fmtMem(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':mb+' MB'}
+function renderModels(){
+  const list=$('#mlist');
+  if(!models.length){
+    list.innerHTML=`<div class="empty"><p>No models loaded. Add one:</p><div class="examples" style="justify-content:center;border:0;padding:0">${['helmo/DecidaBERT-large','Qwen/Qwen3-0.6B','helmo/laya:typed-decisions','Contrastive-LM/CLM-v0.1-8B'].map(x=>`<button type="button" data-ex="${x}" data-go="1">${x}</button>`).join('')}</div></div>`;
+    renderDevice();fillPickers();return;
+  }
+  list.innerHTML=models.map(m=>{
+    const [cls,lab]=quality(m.backend);
+    const st=m.status==='ready'?'':m.status;
+    const checks=m.checks?`<span class="heat" aria-label="${m.checks.filter(Boolean).length} of 14 passed">${m.checks.map((p,i)=>`<i class="${p?'p':'f'}" title="${TASKS[i]}: ${p?'pass':'fail'}"></i>`).join('')}</span><span>${m.checks.filter(Boolean).length}/14</span>`
+      :m.running?`<span class="heat">${TASKS.map((_,i)=>`<i class="${i<m.running?'run':''}"></i>`).join('')}</span><span>running</span>`
+      :`<span class="muted" style="font-size:12.5px">not run yet</span>`;
+    const loading=m.status==='loading';
+    return `<div class="mrow" data-name="${esc(m.name)}">
+      <span class="sdot ${st}" title="${m.status}"></span>
+      <div style="min-width:0"><div class="mname">${esc(m.name)}</div><div class="mref" title="${esc(m.ref)}">${esc(m.ref)}</div>${loading?`<div class="prog"><i style="width:${m.progress}%"></i></div><div class="mref">${m.phase||'loading'} · ${Math.round(m.progress)}%</div>`:''}</div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap"><span class="badge b-back">${m.backend}</span><span class="badge ${cls}">${lab}</span></div>
+      <div class="mcell"><b>${m.acc?m.acc.toFixed(2):'n/a'}</b></div>
+      <div class="mcell lat"><b>${m.p50==null?'—':m.p50}</b> <span class="p95">/ ${m.p95==null?'—':m.p95} ms</span>${m.note?`<div class="muted" style="font-size:11.5px">${m.note}</div>`:''}</div>
+      <div class="mcell">${m.mem?fmtMem(m.mem):'—'}<div class="muted" style="font-size:11.5px">${esc(m.license)}${m.spent!=null?` · spent $${m.spent.toFixed(4)} of $${m.budget.toFixed(2)}`:''}${m.error?' · '+esc(m.error).slice(0,80):''}</div></div>
+      <div style="display:flex;align-items:center">${checks}</div>
+      <div class="acts"><input class="radio" type="radio" name="def" aria-label="Make ${esc(m.name)} the default" ${m.name===defaultModel?'checked':''} ${loading?'disabled':''} data-act="default">
+        <button class="btn sm ghost" data-act="try" ${loading?'disabled':''}>Try</button>
+        <button class="btn sm ghost" data-act="check" ${loading||m.running?'disabled':''}>Run checks</button>
+        <button class="btn sm ghost" data-act="unload">Unload</button></div>
+    </div>`}).join('');
+  renderDevice();fillPickers();
+}
+$('#mlist').addEventListener('click',e=>{
+  const ex=e.target.closest('[data-ex]');if(ex){$('#addRef').value=ex.dataset.ex;detectAndAdd(ex.dataset.ex,'');return}
+  const b=e.target.closest('[data-act]');if(!b)return;
+  const name=b.closest('.mrow').dataset.name;const m=models.find(x=>x.name===name);
+  const act=b.dataset.act;
+  if(act==='default'){defaultModel=name;hero.model=name;renderModels();toast(`${name} is now the default in this page`)}
+  if(act==='try'){$('#pgModel').value=name;pg.model=name;go('/playground');runPg()}
+  if(act==='check'){runChecks(m)}
+  if(act==='unload'){api('/v1/models/'+encodeURIComponent(name),{method:'DELETE'}).then(()=>{toast(`Unloaded ${name}`);refreshModels()},e=>toast(e.message))}
+});
+async function runChecks(m){
+  m.checks=null;m.running=1;renderModels();
+  try{
+    const r=await api('/v1/check',{method:'POST',body:JSON.stringify({model:m.name})});
+    m.checks=r.results.map(x=>x.wiring&&x.correct);m.running=0;renderModels();
+    toast(`${m.name}: wiring ${r.wiring_ok}/${r.total}, correct ${r.correct}/${r.total}`);
+  }catch(e){m.running=0;renderModels();toast('Checks failed: '+e.message)}
+}
+
+/* add model with auto-detection */
+async function detectAndAdd(ref,alias){
+  const box=$('#detect');box.classList.add('on');
+  const r=ref.trim();
+  if(!r){box.innerHTML='<ol><li class="s-bad"><span class="m">✕</span><span>Paste a Hugging Face id (org/name) or a local folder path.</span></li></ol>';return}
+  box.innerHTML=`<ol><li class="s-ok"><span class="m">…</span><span>Detecting and loading ${esc(r)}. Large models take a while to download.</span></li></ol>`;
+  const tmp={name:(alias||'').trim()||r.split('/').pop().toLowerCase(),ref:r,backend:'lm',status:'loading',progress:35,phase:'downloading and loading',p50:null,p95:null,license:'…',checks:null};
+  models.push(tmp);renderModels();
+  try{
+    const m=await api('/v1/models',{method:'POST',body:JSON.stringify({ref:r,name:(alias||'').trim()||undefined})});
+    const [cls,lab]=quality(m.backend);
+    box.innerHTML=`<ol><li class="s-ok"><span class="m">✓</span><span>${esc(m.reason)}</span></li></ol><div class="verdict">Detected <span class="badge b-back">${m.backend}</span><span class="badge ${cls}">${lab}</span> Loaded as <b>${esc(m.name)}</b> on ${esc(m.device)}.</div>`;
+    toast(`${m.name} is ready`);
+  }catch(e){
+    box.innerHTML=`<ol><li class="s-bad"><span class="m">✕</span><span>${esc(e.message)}</span></li></ol>`;
+  }
+  models=models.filter(x=>x!==tmp);await refreshModels();
+}
+$('#addForm').addEventListener('submit',e=>{e.preventDefault();detectAndAdd($('#addRef').value,$('#addAlias').value);$('#addAlias').value=''});
+$$('.examples [data-ex]').forEach(b=>b.addEventListener('click',()=>{$('#addRef').value=b.dataset.ex;$('#addRef').focus()}));
+
+/* ---------- playground ---------- */
+const pg={model:null,preset:'billing',state:'',qs:[],last:null,tab:'answers'};
+function loadPreset(k){
+  const P=PRESETS[k];pg.preset=k;pg.state=P.state;
+  pg.qs=Object.entries(P.questions).map(([key,q])=>({key,type:q.type,instructions:q.instructions,
+    criteria:q.type==='choice'?Object.entries(q.criteria).map(([a,b])=>[a,b]):q.type==='score'?q.criteria.slice():[]}));
+  $('#pgState').value=pg.state;renderQs();
+  $$('#pgPresets button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.p===k));
+}
+$('#pgPresets').innerHTML=Object.entries(PRESETS).map(([k,v])=>`<button type="button" data-p="${k}" aria-pressed="false">${v.label}</button>`).join('');
+$('#pgPresets').addEventListener('click',e=>{const b=e.target.closest('[data-p]');if(b){loadPreset(b.dataset.p);runPg()}});
+function renderQs(){
+  $('#pgQs').innerHTML=pg.qs.map((q,i)=>{
+    let crit='';
+    if(q.type==='choice')crit=`<div class="crit">${q.criteria.map(([o,d],j)=>`<div class="row"><input class="inp opt" aria-label="Option name" value="${esc(o)}" data-i="${i}" data-j="${j}" data-f="o"><input class="inp" aria-label="Option description" value="${esc(d)}" data-i="${i}" data-j="${j}" data-f="d"><button class="x" type="button" aria-label="Remove option" data-rm="${i}:${j}">×</button></div>`).join('')}<div><button class="add" type="button" data-addc="${i}">Add option</button></div></div>`;
+    if(q.type==='score')crit=`<div class="crit">${q.criteria.map((l,j)=>`<div class="row"><span class="num">${j}</span><input class="inp" aria-label="Level ${j}" value="${esc(l)}" data-i="${i}" data-j="${j}" data-f="l"><button class="x" type="button" aria-label="Remove level" data-rm="${i}:${j}">×</button></div>`).join('')}<div><button class="add" type="button" data-addc="${i}">Add level</button></div></div>`;
+    return `<div class="qcard"><div class="row"><input class="inp key" aria-label="Question key" value="${esc(q.key)}" data-i="${i}" data-f="key"><select aria-label="Question type" data-i="${i}" data-f="type"><option ${q.type==='choice'?'selected':''}>choice</option><option ${q.type==='score'?'selected':''}>score</option><option ${q.type==='noul'?'selected':''}>noul</option></select><span style="flex:1"></span><button class="x" type="button" aria-label="Remove question" data-rmq="${i}">×</button></div>
+      <input class="inp" aria-label="Instructions" placeholder="${q.type==='noul'?'A yes/no statement':'Instructions'}" value="${esc(q.instructions)}" data-i="${i}" data-f="ins">${crit}</div>`}).join('');
+}
+$('#pgQs').addEventListener('input',e=>{
+  const t=e.target;const i=+t.dataset.i;const q=pg.qs[i];if(!q)return;const f=t.dataset.f;const j=+t.dataset.j;
+  if(f==='key')q.key=t.value;else if(f==='ins')q.instructions=t.value;else if(f==='o')q.criteria[j][0]=t.value;else if(f==='d')q.criteria[j][1]=t.value;else if(f==='l')q.criteria[j]=t.value;
+  refreshCode();
+});
+$('#pgQs').addEventListener('change',e=>{const t=e.target;if(t.dataset.f!=='type')return;const q=pg.qs[+t.dataset.i];q.type=t.value;q.criteria=q.type==='choice'?[['yes','It applies'],['no','It does not']]:q.type==='score'?['Low','Medium','High']:[];renderQs();refreshCode()});
+$('#pgQs').addEventListener('click',e=>{
+  const rm=e.target.closest('[data-rm]');const add=e.target.closest('[data-addc]');const rq=e.target.closest('[data-rmq]');
+  if(rm){const [i,j]=rm.dataset.rm.split(':').map(Number);if(pg.qs[i].criteria.length<=2){toast(pg.qs[i].type==='choice'?'A choice needs at least 2 options':'A score needs at least 2 levels');return}pg.qs[i].criteria.splice(j,1);renderQs()}
+  if(add){const q=pg.qs[+add.dataset.addc];if(q.type==='choice'){if(q.criteria.length>=255)return toast('A choice allows up to 255 options');q.criteria.push(['option'+(q.criteria.length+1),''])}else{if(q.criteria.length>=32)return toast('A score allows up to 32 levels');q.criteria.push('Level '+q.criteria.length)}renderQs()}
+  if(rq){pg.qs.splice(+rq.dataset.rmq,1);renderQs()}
+  refreshCode();
+});
+$$('[data-addq]').forEach(b=>b.addEventListener('click',()=>{const t=b.dataset.addq;let n=1;while(pg.qs.some(q=>q.key===t+n))n++;
+  pg.qs.push({key:t+n,type:t,instructions:t==='noul'?'Is this about a refund?':t==='score'?'How positive is the message?':'Which category fits best?',criteria:t==='choice'?[['question','Asks for information'],['complaint','Reports a problem']]:t==='score'?['Negative','Neutral','Positive']:[]});renderQs();refreshCode()}));
+$('#pgState').addEventListener('input',e=>{pg.state=e.target.value;refreshCode()});
+$('#pgModel').addEventListener('change',e=>{pg.model=e.target.value;refreshCode()});
+function buildRequest(){
+  const questions={};
+  for(const q of pg.qs){const o={type:q.type,instructions:q.instructions};if(q.type==='choice'){o.criteria={};q.criteria.forEach(([a,b])=>{if(a)o.criteria[a]=b})}if(q.type==='score')o.criteria=q.criteria.slice();questions[q.key||'q']=o}
+  return {model:pg.model,state:pg.state,questions};
+}
+function validate(req){
+  if(!req.state.trim())return 'state is empty: describe what the model should read';
+  const keys=pg.qs.map(q=>q.key);if(new Set(keys).size!==keys.length)return 'two questions share a key; keys must be unique';
+  if(!pg.qs.length)return 'add at least one question';
+  for(const q of pg.qs){if(!q.instructions.trim())return `questions.${q.key}.instructions is empty`;
+    if(q.type==='choice'&&Object.keys(req.questions[q.key].criteria).length<2)return `questions.${q.key}.criteria needs 2 to 255 uniquely named options`}
+  return null;
+}
+function hl(json){return esc(json).replace(/(&quot;[^&]*?&quot;)(\s*:)/g,'<span class="k">$1</span>$2').replace(/:\s(&quot;.*?&quot;)/g,': <span class="s">$1</span>')}
+function codeFor(tab){
+  const req=buildRequest();const js=JSON.stringify(req,null,2);
+  if(tab==='json')return {html:hl(js),raw:js};
+  if(tab==='curl'){const raw=`curl -s localhost:8000/v1/systemone \\\n  -H 'content-type: application/json' \\\n  -d '${JSON.stringify(req).replace(/'/g,"'\\''")}'`;return {html:esc(raw),raw}}
+  if(tab==='python'){const raw=`import requests\n\nresp = requests.post(\n    "http://localhost:8000/v1/systemone",\n    json=${js.replace(/\n/g,'\n    ')},\n)\nfor key, answer in resp.json()["answers"].items():\n    print(key, answer.get("choice") or answer.get("score") or answer.get("noul"))`;return {html:esc(raw).replace(/^(import requests)/,'<span class="k">$1</span>').replace(/(# .*)/g,'<span class="c">$1</span>'),raw}}
+  if(tab==='response'){if(!pg.last)return {html:'<span class="c">// Run a request to see the response</span>',raw:''};const r=JSON.stringify(pg.last,null,2);return {html:hl(r),raw:r}}
+}
+function refreshCode(){if(pg.tab!=='answers')showTab(pg.tab)}
+function showTab(tab){
+  pg.tab=tab;$$('.tabs [data-tab]').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===tab));
+  const out=$('#pgOut');
+  if(tab==='answers'){
+    if(!pg.last){out.innerHTML='<p class="muted">Press Run to see each question\'s distribution.</p>';return}
+    out.innerHTML='';const box=document.createElement('div');box.className='answers';box.style.padding='0';
+    const req=pg.lastReq;for(const [k,q] of Object.entries(req.questions))box.appendChild(renderAnswer(k,q,pg.last.answers[k],pg.fresh));
+    pg.fresh=false;out.appendChild(box);
+    const be=pg.last.x_decida.model_family;const [cls,lab]=quality(be);
+    out.insertAdjacentHTML('beforeend',`<div class="demo-foot" style="margin:12px -16px 0;border-radius:0"><span class="badge ${cls}">${lab}</span><span><b>${pg.last.latency_ms} ms</b></span><span>${pg.last.usage.input_tokens} input tokens, 0 generated</span></div>`);
+    return;
+  }
+  const c=codeFor(tab);out.innerHTML=`<div class="codewrap"><pre class="code">${c.html}</pre>${c.raw?'<button class="copy" type="button">Copy</button>':''}</div>`;
+  const cb=$('.copy',out);if(cb)cb.addEventListener('click',()=>copy(c.raw));
+}
+$$('.tabs [data-tab]').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
+async function runPg(){
+  const req=buildRequest();const err=validate(req);
+  const mm=models.find(m=>m.name===pg.model);
+  if(!mm||mm.status!=='ready'){$('#pgMeta').innerHTML=`<span style="color:var(--red)">404: model “${esc(pg.model)}” is not loaded. Loaded: ${models.filter(m=>m.status==='ready').map(m=>esc(m.name)).join(', ')||'none'}.</span>`;return}
+  if(err){$('#pgMeta').innerHTML=`<span style="color:var(--red)">422 validation_error: ${esc(err)}</span>`;return}
+  const btn=$('#pgRun');btn.disabled=true;btn.textContent='Running…';
+  let r;try{r=await decide(pg.model,req.state,req.questions)}catch(e){btn.disabled=false;btn.textContent='Run';$('#pgMeta').innerHTML=`<span style="color:var(--red)">${e.status||'error'}: ${esc(e.message)}</span>`;return}
+  (()=>{btn.disabled=false;btn.textContent='Run';pg.last=r;pg.lastReq=req;pg.fresh=true;
+    $('#pgMeta').textContent=`200 OK in ${r.latency_ms} ms on ${DEVICE.kind}`;showTab(pg.tab==='json'||pg.tab==='curl'||pg.tab==='python'?pg.tab:'answers');logActivity(pg.model,r,req.questions)})();
+}
+$('#pgRun').addEventListener('click',runPg);
+document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&e.target.closest('#playground')){e.preventDefault();runPg()}});
+function fillPickers(){
+  const ready=models.filter(m=>m.status==='ready');
+  const opts=ready.map(m=>`<option value="${esc(m.name)}">${esc(m.name)}</option>`).join('')||'<option value="">No models loaded</option>';
+  const s=$('#pgModel');s.innerHTML=opts;if(ready.some(m=>m.name===pg.model))s.value=pg.model;else{pg.model=s.value}
+  $$('.bpick').forEach(p=>{const v=p.value;p.innerHTML=opts;if(ready.some(m=>m.name===v))p.value=v;else if(defaultModel)p.value=defaultModel});
+}
+
+/* activity */
+const activity=[];
+function logActivity(model,r,qs){
+  const first=Object.entries(r.answers)[0];let top='';
+  if(first){const a=first[1];top=first[0]+': '+(a.type==='choice'?a.choice:a.type==='score'?a.score.toFixed(2):'p '+a.noul.toFixed(2))}
+  const d=new Date();activity.unshift({t:d.toTimeString().slice(0,8),model,top,lat:r.latency_ms});activity.length=Math.min(activity.length,5);
+  $('#activity').innerHTML=activity.map(a=>`<li><span class="muted">${a.t}</span><b>${esc(a.top)}</b><span>${esc(a.model)}</span><span class="r">${a.lat} ms</span></li>`).join('');
+}
+
+/* ---------- under the hood ---------- */
+const STEPS=[
+ {h:'Validate',p:'Schema, types and limits',d:['Every request is checked before a model sees it: 2–255 options for a choice, 2–32 ordered levels for a score, one statement for a noul, unique keys.','A bad request fails fast with 422 and a message that names the field, such as questions.department.criteria. Nothing reaches the GPU.'],code:'{"error": {"type": "validation_error",\n  "message": "questions.department.criteria needs 2 to 255 options"}}'},
+ {h:'Route',p:'Alias to loaded model',d:['model is an alias such as decidabert or qwen3-0.6b. Omit it and the first model answers.','An unknown alias returns 404 with the list of loaded models, so a client can recover instead of guessing.'],code:'{"error": {"type": "model_error",\n  "message": "model \\"pilot6\\" is not loaded",\n  "models": ["decidabert", "qwen"]}}'},
+ {h:'Queue',p:'One model at a time on the GPU',d:['All questions of a request go through the model in one forward pass. POST /v1/systemone/batch takes up to 256 independent requests and answers them concurrently.','On an Apple GPU, models take a turn behind a lock, because running two at once crashes PyTorch. There is no micro-batching queue yet.'],code:'POST /v1/systemone/batch\n{"requests": [ {...}, {...} ]}   # up to 256'},
+ {h:'Read',p:'Backend adapter',d:['The adapter turns state, question and options into one score per option. Encoder heads, contrastive similarity and letter logits all end in the same place: a vector of logits.','Adapters are the only backend-specific code. Add one and every endpoint, check and bench works with it.'],code:'engines: engine.py (encoder), clm_engine.py, lm_engine.py\neach answers a request with the same response shape'},
+ {h:'Calibrate',p:'Temperature or a flag',d:['Encoder checkpoints ship a temperature, applied before the softmax, so a 0.9 means roughly nine in ten.','Zero-shot backends have none. Their answers carry calibrated: false and the UI marks them in amber.'],code:'p = softmax(logits / T)      # encoder, T from config\np = softmax(logits)          # clm, lm: calibrated = false'},
+ {h:'Respond',p:'Distribution, usage, latency',d:['Choice returns every option\'s probability and the top pick; score returns the expected level and the legend; noul returns p(true).','output_tokens is always 0. Latency is measured per request and fed to /metrics as a histogram, so p95 is always one query away.'],code:'"usage": {"input_tokens": 61, "output_tokens": 0},\n"latency_ms": 132.4,\n"x_decida": {"model_family": "lm", "calibrated": false}'}
+];
+let curStep=0;
+$('#flow').innerHTML=STEPS.map((s,i)=>`<button class="st" type="button" aria-pressed="${i===curStep}" data-s="${i}"><span class="n">${i+1}</span><h3>${s.h}</h3><p>${s.p}</p></button>`).join('');
+function showStep(i){curStep=i;$$('#flow .st').forEach((b,j)=>b.setAttribute('aria-pressed',j===i));const s=STEPS[i];
+  $('#stdetail').innerHTML=`<div><h3>${i+1}. ${s.h}</h3>${s.d.map(p=>`<p>${esc(p)}</p>`).join('')}</div><div class="codewrap"><pre class="code">${esc(s.code)}</pre></div>`}
+$('#flow').addEventListener('click',e=>{const b=e.target.closest('[data-s]');if(b)showStep(+b.dataset.s)});
+showStep(curStep);
+$('#traceBtn').addEventListener('click',()=>{
+  const st=$$('#flow .st');st.forEach(s=>s.classList.remove('lit'));let i=0;
+  const go=()=>{if(i>=st.length){setTimeout(()=>st.forEach(s=>s.classList.remove('lit')),1400);return}st[i].classList.add('lit');showStep(i);i++;setTimeout(go,reduced?50:650)};go();
+});
+
+const ADAPTERS={
+ encoder:{title:'encoder',sub:'Trained decision heads over a ModernBERT-class encoder. Decida and Laya checkpoints.',
+  intro:'The encoder reads the state and the question together, pools one vector, and a small head scores every option against it. It was trained on typed decisions, so the scores mean something and a stored temperature calibrates them.',
+  diag:()=>`<div class="box"><div class="ttl">input</div><span class="tok">[CLS]</span><span class="tok">invoice</span><span class="tok">charged</span><span class="tok">twice</span><span class="tok">…</span><span class="tok">[SEP]</span><span class="tok">Which team…</span></div>
+   <div class="arrow">${ARROW}</div>
+   <div class="box"><div class="ttl">pooled state vector</div>${vec(24,'enc')}<div class="ttl" style="margin-top:8px">per-option head</div><div class="muted" style="font-size:12px">score(option) = head(h, embed(option))</div></div>
+   <div class="arrow">${ARROW}</div>
+   <div class="box"><div class="ttl">softmax(logits / T)</div>${miniBars([['billing',.93],['technical',.05],['sales',.02]])}</div>`,
+  facts:[['0.74 to 0.77','typed-decisions accuracy'],['≈ 50 ms','per question, Apple GPU'],['calibrated','temperature in config'],['rl_agent_config.json','how it is detected']]},
+ clm:{title:'clm',sub:'A frozen 8B encoder plus two trained projection heads. Scores options by cosine similarity.',
+  intro:'The state and each option text are embedded separately and compared by cosine similarity. Option embeddings do not depend on the state, so Decida caches them: a repeated question costs one state embedding, which is why CLM drops to about 17 ms. It is sensitive to how options are phrased.',
+  diag:()=>`<div class="box"><div class="ttl">state embedding (last token)</div>${vec(24,'clm-s')}<div class="ttl" style="margin-top:8px">Qwen3-8B, frozen</div></div>
+   <div class="arrow">${ARROW}</div>
+   <div class="box"><div class="ttl">option embeddings, cached</div>${vec(12,'o1')}${vec(12,'o2')}${vec(12,'o3')}</div>
+   <div class="arrow">${ARROW}</div>
+   <div class="box"><div class="ttl">cosine, then softmax</div>${miniBars([['billing',.71],['technical',.18],['sales',.11]])}</div>`,
+  facts:[['0.41','typed-decisions accuracy'],['17 ms','with cached options'],['16 GB','of weights'],['*.pt heads','how it is detected']]},
+ lm:{title:'lm',sub:'Any causal LM, read zero-shot. No generation: one forward pass, then the logits of A, B, C.',
+  intro:'Decida writes the options as a lettered list and reads the next-token logits for the option letters. It works with any causal LM, which makes it great for comparison, but these models were never trained to decide: they drift toward option A and yes/no questions are close to coin flips.',
+  diag:()=>`<div class="box"><div class="ttl">prompt</div><div class="mono" style="font-size:11.5px;line-height:1.6">…charged twice…<br>Which team should handle this?<br>A. billing<br>B. technical<br>C. sales<br>Answer:</div></div>
+   <div class="arrow">${ARROW}</div>
+   <div class="box"><div class="ttl">next-token logits</div><span class="tok hl">&nbsp;A</span> 4.1<br><span class="tok">&nbsp;B</span> 3.0<br><span class="tok">&nbsp;C</span> 2.2<br><span class="muted" style="font-size:12px">every other token ignored</span></div>
+   <div class="arrow">${ARROW}</div>
+   <div class="box"><div class="ttl">softmax over letters</div>${miniBars([['billing',.66],['technical',.22],['sales',.12]])}</div>`,
+  facts:[['0.36 to 0.44','typed-decisions accuracy'],['79 to 856 ms','per question, Apple GPU'],['uncalibrated','flagged in amber'],['…ForCausalLM','how it is detected']]}
+};
+const ARROW='<svg width="22" height="12" viewBox="0 0 22 12" aria-hidden="true"><path d="M1 6h18m-5-5 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
+function vec(n,seed){let s='<div class="vec">';for(let i=0;i<n;i++)s+=`<i style="height:${20+hash(seed+i)*80}%"></i>`;return s+'</div>'}
+function miniBars(rows){return '<div class="bars" style="grid-template-columns:auto 1fr 34px">'+rows.map(([l,p],i)=>`<span class="lab${i?'':' top'}">${l}</span><span class="track"><span class="fill${i?'':' top'}" style="width:${p*100}%"></span></span><span class="num${i?'':' top'}">${p.toFixed(2)}</span>`).join('')+'</div>'}
+let curA='encoder';
+$('#alist').innerHTML=Object.entries(ADAPTERS).map(([k,a])=>{const [cls,lab]=quality(k);return `<button class="aitem" role="tab" aria-selected="${k===curA}" data-a="${k}"><div class="row"><span class="badge b-back">${a.title}</span><span class="badge ${cls}">${lab.split(' · ')[0]}</span></div><p>${a.sub}</p></button>`}).join('');
+function showA(k){curA=k;$$('#alist .aitem').forEach(b=>b.setAttribute('aria-selected',b.dataset.a===k));const a=ADAPTERS[k];
+  $('#abody').innerHTML=`<p>${a.intro}</p><div class="diag">${a.diag()}</div><div class="facts">${a.facts.map(([b,s])=>`<div><b>${b}</b>${s}</div>`).join('')}</div>`}
+$('#alist').addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b)showA(b.dataset.a)});
+showA(curA);
+
+$('#tree').innerHTML=[
+ ['src/decida/',''],
+ ['  runtime/',''],['    store.py','model store, lazy loading, aliases'],['    detect.py','encoder, clm or lm, and why'],['    device.py','cuda, then mps, then cpu'],['    refs.py','Hub ids, folders, downloads'],['    remote.py','hosted models, spend cap'],
+ ['  serve/',''],['    api.py','REST endpoints'],['    engine.py','encoder engine'],['    clm_engine.py','cosine over cached options'],['    lm_engine.py','option-letter logits'],['    data_api.py','dataset endpoints'],
+ ['  schema/','typed questions and answers'],['  model/enc.py','the encoder'],
+ ['  mcp_server.py','tools for coding agents'],['  checks.py','14 tasks plus math checks'],['  settings.py','~/.decida/settings.json'],
+ ['  web/bench/','games, sorter, palette, emoji,'],['','wikispeedia, town, compare'],
+ ['third_party/licenses/','kept beside ported code']
+].map(([a,b])=>`<b>${esc(a.padEnd(22,' '))}</b><span class="c">${esc(b)}</span>`).join('\n');
+$('#cliCode').innerHTML=[
+ ['# serve the models in ~/.decida/settings.json (created with the defaults on the first run)',1],['decida serve',0],['',0],
+ ['# add or remove models, or restore the defaults',1],['decida setup',0],['',0],
+ ['# or serve exactly these; the first is the default',1],['decida serve --model decidabert=helmo/DecidaBERT-large \\',0],['             --model qwen=helmo/Qwen3-0.6B',0],['',0],
+ ['# what a running server has loaded, and on which device',1],['decida list',0],['',0],
+ ['# one prediction from two JSON files, no server needed',1],['decida predict --model helmo/DecidaBERT-large \\',0],['  --state state.json --questions questions.json',0],['',0],
+ ['# 14 wiring tasks against a model',1],['decida check helmo/Qwen3-0.6B',0],['',0],
+ ['# what would serve this model? (reads file names only)',1],['decida detect helmo/laya:typed-decisions',0],['',0],
+ ['# download the data a bench needs',1],['decida data download wikispeedia',0],['',0],
+ ['# expose tools to a coding agent',1],['decida mcp',0]
+].map(([l,c])=>c?`<span class="c">${esc(l)}</span>`:esc(l)).join('\n');
+
+/* ---------- batching sim ---------- */
+const cv=$('#sim');const ctx=cv.getContext('2d');let C={};
+function readColors(){const cs=getComputedStyle(document.documentElement);['--acc','--ink','--ink2','--ink3','--line','--red','--green','--raised','--surface','--amber'].forEach(k=>C[k]=cs.getPropertyValue(k).trim())}
+readColors();
+const sim={batch:true,queue:[],inflight:null,out:[],lat:[],disc:0,t:0,next:0,rate:60,playing:!reduced,last:0};
+$('#batchT').addEventListener('change',e=>{sim.batch=e.target.checked;sim.lat=[];sim.disc=0});
+$('#simPlay').addEventListener('click',()=>{sim.playing=!sim.playing;$('#simPlay').textContent=sim.playing?'Pause':'Play';if(sim.playing){sim.last=performance.now();requestAnimationFrame(loop)}});
+if(!sim.playing)$('#simPlay').textContent='Play';
+function stepSim(dt){
+  const end=sim.t+dt;
+  while(sim.t<end){
+    const h=Math.min(1,end-sim.t);sim.t+=h;
+    while(sim.next<=sim.t){sim.queue.push({t0:sim.next,y:.15+Math.random()*.7});sim.next+=-Math.log(1-Math.random())*1000/sim.rate}
+    for(let i=sim.queue.length-1;i>=0;i--)if(sim.t-sim.queue[i].t0>400){sim.queue.splice(i,1);sim.disc++;sim.out.push({x0:-1,t:sim.t,drop:true,y:Math.random()})}
+    if(sim.inflight&&sim.t>=sim.inflight.end){for(const r of sim.inflight.items){sim.lat.push(sim.t-r.t0);sim.out.push({t:sim.t,y:r.y})}if(sim.lat.length>240)sim.lat.splice(0,sim.lat.length-240);sim.inflight=null}
+    if(!sim.inflight&&sim.queue.length){const n=sim.batch?Math.min(16,sim.queue.length):1;const items=sim.queue.splice(0,n);sim.inflight={items,start:sim.t,end:sim.t+(sim.batch?19+1.6*n:19)}}
+  }
+  sim.out=sim.out.filter(o=>sim.t-o.t<350);
+}
+function pct(a,p){if(!a.length)return 0;const s=[...a].sort((x,y)=>x-y);return s[Math.min(s.length-1,Math.floor(p*s.length))]}
+let statT=0;
+function draw(){
+  const dpr=window.devicePixelRatio||1;const w=cv.clientWidth,h=cv.clientHeight;
+  if(cv.width!==Math.round(w*dpr)||cv.height!==Math.round(h*dpr)){cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr)}
+  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
+  const qx0=w*.06,qx1=w*.56,gx=w*.6,gw=Math.max(90,w*.15),ox=gx+gw+14;
+  ctx.font='12px '+getComputedStyle(document.body).fontFamily;ctx.fillStyle=C['--ink3'];
+  ctx.fillText('queue',qx0,20);ctx.fillText('GPU',gx,20);ctx.fillText('answers',ox,20);
+  // queue lane
+  ctx.strokeStyle=C['--line'];ctx.lineWidth=1;ctx.setLineDash([3,4]);ctx.beginPath();ctx.moveTo(qx0,h/2);ctx.lineTo(qx1,h/2);ctx.stroke();ctx.setLineDash([]);
+  const cap=Math.floor((qx1-qx0)/9);const shown=Math.min(cap,sim.queue.length);
+  for(let i=0;i<shown;i++){const r=sim.queue[i];const age=Math.min(1,(sim.t-r.t0)/400);const x=qx1-i*9;
+    ctx.fillStyle=age>.6?C['--red']:age>.3?C['--amber']:C['--acc'];ctx.globalAlpha=.9;ctx.beginPath();ctx.arc(x,h/2+Math.sin(i*1.7)*10,3.2,0,6.3);ctx.fill()}
+  ctx.globalAlpha=1;
+  if(sim.queue.length>cap){ctx.fillStyle=C['--red'];ctx.fillText('+'+(sim.queue.length-cap)+' waiting',qx0,h/2+32)}
+  // gpu box
+  ctx.strokeStyle=C['--ink3'];ctx.lineWidth=1.2;roundRect(gx,40,gw,h-70,10);ctx.stroke();
+  if(sim.inflight){const n=sim.inflight.items.length;const prog=Math.min(1,(sim.t-sim.inflight.start)/(sim.inflight.end-sim.inflight.start));
+    ctx.fillStyle=C['--acc'];ctx.globalAlpha=.12;roundRect(gx+1,40+1,(gw-2)*prog,h-72,9);ctx.fill();ctx.globalAlpha=1;
+    const cols=4;for(let i=0;i<n;i++){const cx=gx+gw/2+((i%cols)-(cols-1)/2)*12,cy=h/2+(Math.floor(i/cols)-(Math.ceil(n/cols)-1)/2)*12;ctx.fillStyle=C['--acc'];ctx.beginPath();ctx.arc(cx,cy,3.4,0,6.3);ctx.fill()}
+    ctx.fillStyle=C['--ink2'];ctx.fillText(n>1?`batch of ${n}`:'1 request',gx+8,h-40)}
+  // outputs
+  for(const o of sim.out){const a=(sim.t-o.t)/350;if(o.drop){ctx.fillStyle=C['--red'];ctx.globalAlpha=1-a;ctx.fillText('×',qx0-14+a*4,h/2+(o.y-.5)*60);continue}
+    const x=ox+a*(w-ox-10);ctx.globalAlpha=1-a*a;ctx.fillStyle=C['--green'];ctx.beginPath();ctx.arc(x,40+o.y*(h-80),3,0,6.3);ctx.fill()}
+  ctx.globalAlpha=1;
+}
+function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
+let visible=true;
+new IntersectionObserver(es=>{visible=es[0].isIntersecting;if(visible&&sim.playing){sim.last=performance.now();requestAnimationFrame(loop)}}).observe(cv);
+function loop(now){
+  if(!sim.playing||!visible)return;
+  const dt=Math.min(50,now-(sim.last||now))/4;sim.last=now;stepSim(dt);draw();
+  if(now-statT>300){statT=now;$('#sP50').textContent=Math.round(pct(sim.lat,.5));const p95=Math.round(pct(sim.lat,.95));$('#sP95').textContent=p95;$('#sP95w').classList.toggle('bad',p95>150);$('#sQ').textContent=sim.queue.length;$('#sD').textContent=sim.disc;$('#sDw').classList.toggle('bad',sim.disc>0)}
+  requestAnimationFrame(loop);
+}
+if(sim.playing){requestAnimationFrame(loop)}else{stepSim(3000);draw();$('#sP50').textContent=Math.round(pct(sim.lat,.5));$('#sP95').textContent=Math.round(pct(sim.lat,.95));$('#sQ').textContent=sim.queue.length}
+window.addEventListener('resize',()=>{if(cv.clientWidth>0)draw()});   // also when its page was hidden while it last drew
+
+/* ---------- benches ---------- */
+const TH={
+ dino:`<svg viewBox="0 0 300 128" fill="none"><line x1="0" y1="96" x2="300" y2="96" stroke="currentColor" stroke-width="1.5"/><g fill="var(--ink)"><rect x="46" y="62" width="18" height="22" rx="2"/><rect x="58" y="54" width="16" height="12" rx="2"/><rect x="48" y="84" width="4" height="12"/><rect x="58" y="84" width="4" height="12"/></g><g fill="currentColor"><rect x="150" y="72" width="8" height="24" rx="2"/><rect x="144" y="80" width="6" height="4"/><rect x="226" y="66" width="10" height="30" rx="2"/></g><path d="M64 56 Q110 14 150 60" stroke="var(--acc)" stroke-width="1.5" stroke-dasharray="4 4"/><g font-family="var(--mono)" font-size="10" fill="var(--ink2)"><text x="176" y="24">jump 0.91</text><text x="176" y="38">duck 0.02</text><text x="176" y="52">stay 0.07</text></g></svg>`,
+ snake:`<svg viewBox="0 0 300 128"><g stroke="var(--line)">${Array.from({length:9},(_,i)=>`<line x1="${60+i*20}" y1="14" x2="${60+i*20}" y2="114"/>`).join('')}${Array.from({length:6},(_,i)=>`<line x1="60" y1="${14+i*20}" x2="220" y2="${14+i*20}"/>`).join('')}</g><g fill="var(--ink)"><rect x="82" y="56" width="16" height="16" rx="3"/><rect x="102" y="56" width="16" height="16" rx="3"/><rect x="122" y="56" width="16" height="16" rx="3"/><rect x="122" y="36" width="16" height="16" rx="4" fill="var(--acc)"/></g><circle cx="190" cy="44" r="6" fill="var(--green)"/><path d="M142 44h24" stroke="var(--acc)" stroke-width="1.5" stroke-dasharray="3 3"/></svg>`,
+ tetris:`<svg viewBox="0 0 300 128"><rect x="110" y="8" width="80" height="112" fill="none" stroke="var(--line)"/><g fill="var(--ink3)"><rect x="110" y="104" width="64" height="16"/><rect x="110" y="88" width="16" height="16"/><rect x="142" y="88" width="32" height="16"/></g><g fill="var(--acc)"><rect x="174" y="72" width="16" height="16"/><rect x="174" y="88" width="16" height="16"/><rect x="174" y="104" width="16" height="16"/><rect x="158" y="72" width="16" height="16" opacity=".35"/></g><g fill="var(--ink)" transform="translate(126 16)"><rect width="12" height="12"/><rect x="12" width="12" height="12"/><rect x="12" y="12" width="12" height="12"/><rect x="24" y="12" width="12" height="12"/></g></svg>`,
+ palette:`<svg viewBox="0 0 300 128"><rect x="30" y="16" width="240" height="44" rx="8" fill="var(--raised)" stroke="var(--line)"/><text x="150" y="44" text-anchor="middle" font-family="var(--mono)" font-size="14" fill="var(--ink2)">neon tokyo</text>${[[30,'#d0209a',96],[126,'#ff8ccf',58],[184,'#0a84ff',26],[210,'#12c5a0',20],[230,'#8620b8',16],[246,'#000000',10],[256,'#3a3ad4',14]].map(([x,c,w])=>`<rect x="${x}" y="70" width="${w}" height="40" fill="${c}"/>`).join('')}</svg>`,
+ emoji:`<svg viewBox="0 0 300 128"><rect x="60" y="12" width="180" height="26" rx="9" fill="var(--raised)" stroke="var(--line)"/><text x="150" y="30" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="var(--ink2)">things you wear in winter</text><g font-size="22" text-anchor="middle"><text x="105" y="70">🧤</text><text x="138" y="70">🧣</text><text x="171" y="70">🥾</text><text x="204" y="70">🧢</text></g><g font-size="15" opacity=".85">${['🍎','🐧','🚗','🎸','🍕','🌵','⚽','🐙','🍩','☂️','🔑','🌙','🦊','🍄','🎈','📚','🐢','🍋'].map((e,k)=>`<text x="${22+(k%9)*30+(Math.floor(k/9)%2)*14}" y="${104+Math.floor(k/9)*16}">${e}</text>`).join('')}</g></svg>`,
+ flappy:`<svg viewBox="0 0 300 128"><rect width="300" height="128" fill="#bfe6ff" opacity=".55"/>${[[70,40],[170,60],[250,30]].map(([x,gy])=>`<rect x="${x}" y="0" width="26" height="${gy-22}" fill="#4fbf5a"/><rect x="${x-3}" y="${gy-30}" width="32" height="10" fill="#3aa04a"/><rect x="${x}" y="${gy+22}" width="26" height="${106-gy-22}" fill="#4fbf5a"/><rect x="${x-3}" y="${gy+22}" width="32" height="10" fill="#3aa04a"/>`).join('')}<ellipse cx="40" cy="58" rx="13" ry="10" fill="#f5b83a" stroke="#8a5a0a"/><circle cx="46" cy="55" r="3" fill="#fff"/><polygon points="52,58 60,60 52,63" fill="#ff7a2a"/><rect y="106" width="300" height="22" fill="#7a5230"/><rect y="106" width="300" height="6" fill="#5cbf4a"/></svg>`,
+ sorter:`<svg viewBox="0 0 300 128" fill="none"><ellipse cx="150" cy="40" rx="98" ry="30" fill="var(--line)" opacity=".35"/>${[[92,32,'#e0334f'],[118,44,'#f28c28'],[146,30,'#f2d32b'],[172,46,'#2fb45a'],[200,34,'#7b3fb8'],[130,52,'#2fb45a'],[160,24,'#e0334f'],[184,28,'#f28c28'],[108,36,'#7b3fb8'],[138,40,'#f2d32b']].map(([x,y,c])=>`<circle cx="${x}" cy="${y}" r="5" fill="${c}"/>`).join('')}<path d="M30 118 L142 58" stroke="#8b5a2b" stroke-width="3"/><path d="M270 112 L152 58" stroke="#8b5a2b" stroke-width="3"/>${[[40,'#e0334f'],[95,'#f28c28'],[150,'#f2d32b'],[205,'#2fb45a'],[260,'#7b3fb8']].map(([x,c])=>`<ellipse cx="${x}" cy="108" rx="22" ry="9" fill="var(--raised)" stroke="var(--line)"/><circle cx="${x}" cy="107" r="6" fill="${c}"/>`).join('')}</svg>`,
+ town:`<svg viewBox="0 0 300 128" fill="none"><path d="M150 8 L262 62 L150 116 L38 62 Z" fill="#b9d9a6" stroke="#8fbf7c"/><path d="M150 8 L262 62 L150 116 L38 62 Z" fill="none"/><g stroke="#ead9ae" stroke-width="7" stroke-linecap="round"><path d="M94 35 L206 89"/><path d="M206 35 L94 89"/></g>${[[122,50,'#c2543b'],[178,50,'#c2543b'],[150,74,'#8b6fb7'],[100,66,'#c2543b'],[200,66,'#3f5f63'],[150,32,'#f0c25e'],[150,96,'#c9553f']].map(([x,y,c])=>`<g><path d="M${x} ${y} l10 5 v8 l-10 5 l-10 -5 v-8z" fill="#f6ecd6" stroke="#b8a888" stroke-width=".6"/><path d="M${x-11} ${y+3} l11 -8 l11 8 l-11 6z" fill="${c}"/></g>`).join('')}<circle cx="150" cy="62" r="7" fill="#7fc4d8" stroke="#dfe9d0"/>${[[128,66],[172,60],[142,52],[160,84]].map(([x,y],i)=>`<g><circle cx="${x}" cy="${y-6}" r="2.6" fill="#e0a97f"/><rect x="${x-2.4}" y="${y-4}" width="4.8" height="6" rx="1.4" fill="${['#d64545','#4e8fc4','#f2c94c','#6fae5c'][i]}"/></g>`).join('')}<g fill="#e39a2d"><rect x="169" y="38" width="12" height="12" rx="4"/></g><text x="175" y="47.5" font-size="9" font-family="system-ui" font-weight="700" fill="#fff" text-anchor="middle">!</text></svg>`,
+ wiki:`<svg viewBox="0 0 300 128" fill="none"><g stroke="var(--line)">${[[40,64,120,24],[40,64,120,64],[40,64,120,104],[120,64,200,40],[120,64,200,88],[200,40,262,64]].map(([a,b,c,d])=>`<line x1="${a}" y1="${b}" x2="${c}" y2="${d}"/>`).join('')}</g><path d="M40 64 L120 64 L200 40 L262 64" stroke="var(--acc)" stroke-width="2"/><g fill="var(--raised)" stroke="var(--ink3)"><circle cx="120" cy="24" r="7"/><circle cx="120" cy="104" r="7"/><circle cx="200" cy="88" r="7"/></g><g fill="var(--acc)"><circle cx="40" cy="64" r="8"/><circle cx="120" cy="64" r="7"/><circle cx="200" cy="40" r="7"/></g><circle cx="262" cy="64" r="9" fill="var(--green)"/></svg>`,
+ compare:`<svg viewBox="0 0 300 128"><g font-family="var(--mono)" font-size="10" fill="var(--ink2)"><text x="30" y="22">decidabert</text><text x="170" y="22">qwen</text></g>${[[.93,.05,.02],[.48,.31,.21]].map((ps,k)=>ps.map((p,i)=>`<rect x="${30+k*140}" y="${34+i*22}" width="${p*100}" height="12" rx="2" fill="${i?'var(--ink3)':'var(--acc)'}" opacity="${i?.45:1}"/><rect x="${30+k*140}" y="${34+i*22}" width="100" height="12" rx="2" fill="none" stroke="var(--line)"/>`).join('')).join('')}<g font-family="var(--mono)" font-size="10" fill="var(--ink3)"><text x="30" y="118">48 ms</text><text x="170" y="118">111 ms</text></g></svg>`,
+ check:`<svg viewBox="0 0 300 128">${Array.from({length:14},(_,i)=>`<rect x="${52+i*14}" y="44" width="10" height="40" rx="2" fill="${[10,11,8].includes(i)?'var(--red)':'var(--green)'}"/>`).join('')}<text x="52" y="106" font-family="var(--mono)" font-size="11" fill="var(--ink2)">11/14 · math ✓</text></svg>`,
+ play:`<svg viewBox="0 0 300 128"><rect x="40" y="18" width="220" height="92" rx="10" fill="var(--raised)" stroke="var(--line)"/><rect x="54" y="32" width="120" height="8" rx="2" fill="var(--ink3)" opacity=".5"/><rect x="54" y="46" width="90" height="8" rx="2" fill="var(--ink3)" opacity=".35"/><rect x="54" y="70" width="150" height="10" rx="2" fill="var(--acc)"/><rect x="54" y="86" width="30" height="10" rx="2" fill="var(--ink3)" opacity=".45"/></svg>`
+};
+const BENCHES=[
+ {id:'dino',title:'T-Rex runner',desc:'A 60 FPS game where the model decides every few frames. Toggle the shield to see who is really playing, and lockstep to take latency out of the picture.',tags:['real-time','games','latency p50/p95'],th:'dino'},
+ {id:'snake',title:'Snake',desc:'Full information and only safe moves offered. Three variants: raw board, extracted features, and features with a shield.',tags:['games','full information'],th:'snake'},
+ {id:'flappy',title:'Flappy',desc:'The bird\u2019s height is put into words and the model says where the bird is; the game flaps when P(below) clears a threshold you can slide. Variants show numbers and action questions failing.',tags:['real-time','perception'],th:'flappy'},
+ {id:'wikispeedia',title:'Wikispeedia',desc:'Type a start page and a goal page and watch the model click its way there through the real articles, images included. Compares with real human averages; downloads its data on first use.',tags:['knowledge','multi-step','real data'],th:'wiki'},
+ {id:'tetris',title:'Tetris',desc:'The piece falls under gravity. In the default spots strategy every landing spot is described in one sentence and the model judges each; or the model presses the keys itself.',tags:['games','many options'],th:'tetris'},
+ {id:'sorter',title:'Candies sorter',desc:'A pile of candies, five bowls, and chopsticks that carry each candy to the bowl the model picks. Batches of up to 256 per request: a throughput, cost and accuracy test.',tags:['throughput','batching','cost'],th:'sorter'},
+ {id:'palette',title:'Colour palette',desc:'Type anything and watch the colours a model associates with it appear as stripes, live as you type.',tags:['fun','live typing'],th:'palette'},
+ {id:'emoji',title:'Emoji finder',desc:'A pile of emoji; type a query and the ones that match float up out of it. One yes/no question per emoji, batched.',tags:['fun','batching'],th:'emoji'},
+ {id:'town',title:'AI Town',desc:'One announcement, fifty citizens. Broadcast as the mayor, the fire chief or a stranger and watch every resident decide whether to carry on, investigate, join in or warn their neighbours, with a stopwatch on the whole town.',tags:['many decisions','fun','one request per citizen'],th:'town'},
+ {id:'compare',title:'Model compare',desc:'The same questions to several models side by side, plus a labelled set of thirty clear-cut questions that scores each model on accuracy, how sure it is when it is wrong, and latency.',tags:['several models','accuracy','calibration'],th:'compare'},
+ {id:'check',title:'Smoke checks',desc:'Fourteen obvious tasks plus math checks. If a model fails these, the wiring is wrong, not the model.',tags:['one click','wiring'],th:'check'}
+];
+$('#benches').innerHTML=BENCHES.map(b=>`<article class="panel bench"><div class="thumb" aria-hidden="true">${TH[b.th]}</div><div class="body"><h3>${b.title}</h3><p>${b.desc}</p><div class="tags">${b.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>
+  <div class="row" style="margin-top:6px"><label class="sr" for="bp-${b.id}">Model for ${b.title}</label><select class="bpick" id="bp-${b.id}"></select><button class="btn sm" type="button" data-open="${b.id}">Open</button></div></div></article>`).join('');
+$('#benches').addEventListener('click',e=>{const b=e.target.closest('[data-open]');if(!b)return;const m=$('#bp-'+b.dataset.open).value;
+  if(b.dataset.open==='check'){const mm=models.find(x=>x.name===m);if(mm){go('/models');runChecks(mm)}return}
+  if(!m){toast('Load a model first');return}
+  api('/v1/benches').then(d=>{const hit=d.benches.find(x=>x.id===b.dataset.open);if(hit)location.href=`${hit.url}?model=${encodeURIComponent(m)}`;else toast('This bench is not installed in this build yet')},()=>toast('Bench list unavailable'))});
+
+/* ---------- api ---------- */
+const API=[
+ ['post','/v1/systemone','Run typed questions. model picks a loaded alias; omit it for the default.'],
+ ['post','/v1/systemone/batch','Up to 256 independent requests to one model in one call, answered concurrently.'],
+ ['get','/v1/models','Name, ref, backend, device, memory, calibration and latency for every model.'],
+ ['post','/v1/models','Load a model from {ref, name?, backend?, device?}. Status moves loading, ready or error.'],
+ ['del','/v1/models/{name}','Unload a model and free its memory.'],
+ ['post','/v1/check','Run the 14 smoke tasks and math checks; returns each result and passed/total.'],
+ ['get','/v1/device','Device kind, name, total and used memory.'],
+ ['get','/v1/benches','Available testbenches with their URL and what they need.'],
+ ['get','/v1/datasets','Data the benches download on demand, with size and status; POST /v1/datasets/{id}/download fetches one.'],
+ ['get','/bench/{id}/','A testbench page. Static HTML that calls /v1/systemone.'],
+ ['get','/health','Status, models loaded and device. Also /healthz.'],
+ ['get','/metrics','Prometheus counters and latency histograms per model.']
+];
+$('#apiRows').innerHTML=API.map(([v,p,d])=>`<tr><td><span class="verb ${v}">${v==='del'?'DELETE':v.toUpperCase()}</span><code>${p}</code></td><td>${d}</td></tr>`).join('');
+
+/* ---------- init ---------- */
+$('#srv').textContent=location.host||'localhost:8000';
+loadPreset('billing');
+showTab('answers');
+// The home example is a real request, so it runs only when the home page is showing (once), never on a reload of another page.
+let heroRan=false;
+function heroFirstRun(){
+  if(heroRan||document.documentElement.getAttribute('data-p')!=='home'||!models.length)return;
+  heroRan=true;
+  const m=models.find(x=>x.name===hero.model);
+  if(m&&m.backend!=='remote')runHero();else{renderModels();if(m)$('#heroAnswers').innerHTML='<div class="empty"><p>Only a hosted model is loaded. Pick it above to run the example; each run is billed to its budget.</p></div>'}
+}
+window.decidaHome=heroFirstRun;
+refreshModels().then(()=>{renderModels();heroFirstRun()});
+setInterval(()=>{if(models.some(m=>m.status==='loading'))refreshModels()},3000);
+})();
+
+/* ---- pages: each nav item is its own URL and shows only its section; the server returns this file for all of them ---- */
+const PAGE_TITLES={home:'Decida',models:'Models',playground:'Playground','under-the-hood':'Under the hood',testbench:'Testbench',api:'API'};
+function showPage(path,push){
+  const p=(path.length>1?path.replace(/\/+$/,''):path),key=pageKey(p);
+  document.documentElement.setAttribute('data-p',key);
+  document.querySelectorAll('.strip nav a').forEach(a=>{if(new URL(a.href).pathname===p)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
+  document.title=key==='home'?'Decida: a local runtime for decision models':PAGE_TITLES[key]+' \u00b7 Decida';
+  if(push)history.pushState({},'',p);
+  window.scrollTo(0,0);
+  if(key==='home'&&window.decidaHome)window.decidaHome();
+  requestAnimationFrame(()=>window.dispatchEvent(new Event('resize')));   // canvases measured while hidden need a redraw
+}
+function go(path){showPage(path,true)}
+document.addEventListener('click',e=>{
+  const a=e.target.closest('a[href]');if(!a||e.defaultPrevented||e.button||e.metaKey||e.ctrlKey||e.shiftKey||a.target)return;
+  const u=new URL(a.href,location.href);if(u.origin===location.origin&&Object.prototype.hasOwnProperty.call(PAGES,u.pathname.length>1?u.pathname.replace(/\/+$/,''):u.pathname)){e.preventDefault();showPage(u.pathname,true)}
+});
+addEventListener('popstate',()=>showPage(location.pathname,false));
+showPage(location.pathname,false);
+</script>
+</body>
+</html>

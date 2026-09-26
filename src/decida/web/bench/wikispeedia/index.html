@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decida bench: Wikispeedia game</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2024%2024%22%3E%3Crect%20x=%221%22%20y=%2216%22%20width=%224%22%20height=%225%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%227%22%20y=%223%22%20width=%224%22%20height=%2218%22%20rx=%221%22%20fill=%22%233a34d2%22/%3E%3Crect%20x=%2213%22%20y=%2213%22%20width=%224%22%20height=%228%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%2219%22%20y=%2218%22%20width=%224%22%20height=%223%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../common/bench.css">
+<!-- The layout (mission table, custom start/goal, article with images, progress) follows our own earlier testbench. -->
+<style>
+main.wide{max-width:1600px}
+#gate{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px;background:var(--surface);font-size:13.5px}
+#gate.ok{display:none}
+#gate .trk{height:10px;border-radius:5px;background:var(--line);overflow:hidden;margin:8px 0}
+#gate .trk i{display:block;height:100%;width:0;background:var(--acc);transition:width .3s}
+#gate small{color:var(--ink3);display:block;line-height:1.4}
+.pick{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
+.pick .fw{position:relative}
+.pick input{width:230px}
+.sugg{position:absolute;z-index:5;left:0;right:0;top:100%;background:var(--raised);border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 24px -14px rgba(0,0,0,.4);max-height:240px;overflow:auto}
+.sugg div{padding:6px 10px;cursor:pointer;font-size:13.5px}.sugg div:hover,.sugg div.on{background:var(--surface)}
+table.ms{border-collapse:collapse;font-size:13px;width:100%}
+table.ms th{position:sticky;top:0;background:var(--raised);text-align:left;color:var(--ink3);font-weight:600;font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:5px 8px}
+table.ms td{padding:5px 8px;border-top:1px solid var(--line)}
+table.ms th:not(:first-child){text-align:right;width:96px;white-space:nowrap}
+table.ms tr.m{cursor:pointer}table.ms tr.m:hover td{background:var(--surface)}
+table.ms td.n{font-family:var(--mono);text-align:right}
+.msw{max-height:230px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.trail{display:flex;flex-wrap:wrap;align-items:center;gap:6px 4px;margin:8px 0}
+.chip{padding:4px 10px;border-radius:999px;border:1.5px solid var(--line);background:var(--surface);font-size:12.5px;font-weight:600}
+.chip.start{border-color:var(--ink3)}
+.chip.closer{border-color:var(--green);background:color-mix(in srgb,var(--green) 14%,transparent)}
+.chip.same{border-color:var(--amber);background:var(--amber-bg)}
+.chip.farther,.chip.lost{border-color:var(--red);background:var(--red-bg)}
+.chip.now{box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 35%,transparent)}
+.chip.goal{border-style:dashed;border-color:var(--acc);color:var(--acc)}
+.chip.goal.won{background:var(--acc);color:var(--acc-ink);border-style:solid}
+.arrow{color:var(--ink3);font-size:13px}
+.banner{display:none;padding:10px 14px;border-radius:10px;margin:8px 0;font-size:14px}
+.banner.on{display:block}.banner.win{background:color-mix(in srgb,var(--green) 16%,transparent);border:1px solid var(--green)}
+.banner.lose{background:var(--red-bg);border:1px solid var(--red)}
+.layout{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;margin-top:10px}
+@media (min-width:1100px){.layout{grid-template-columns:minmax(0,1fr) 360px}}
+.card{border:1px solid var(--line);border-radius:12px;padding:14px 18px;background:var(--raised)}
+.card h2.at{margin:0 0 4px;font-size:26px}
+.card .cat{font-size:12px;color:var(--ink3);margin-bottom:10px}
+.wp{font-size:15px;line-height:1.6;max-height:74vh;overflow:auto;padding-right:8px}
+.wp::after{content:"";display:block;clear:both}
+.wp h2{font-size:19px;border-bottom:1px solid var(--line);padding-bottom:3px;margin:20px 0 8px}
+.wp h3{font-size:16px;margin:14px 0 6px}
+.wp img{max-width:100%;height:auto;border-radius:3px}
+.wp .thumb{margin:4px 0 12px}.wp .tright,.wp .floatright{float:right;margin-left:14px}.wp .tleft,.wp .floatleft{float:left;margin-right:14px}
+.wp .thumb .thumbcaption,.wp .thumb div div{font-size:12.5px;color:var(--ink2);line-height:1.4}
+.wp table{border-collapse:collapse;max-width:100%;font-size:13px}.wp td,.wp th{padding:3px 6px;vertical-align:top}
+.wp a.wiki-link{color:var(--acc);text-decoration:underline dotted;cursor:pointer;border-radius:3px}
+.wp a.wiki-link:hover{background:color-mix(in srgb,var(--acc) 16%,transparent)}
+.wp a.wiki-link.seen{color:var(--ink3);text-decoration:line-through;cursor:not-allowed}
+.wp a.wiki-link.goal{outline:2px solid var(--amber);background:var(--amber-bg);color:var(--ink)}
+.wp a.wiki-link[data-h="1"]{background:color-mix(in srgb,var(--acc) 12%,transparent)}
+.wp a.wiki-link[data-h="2"]{background:color-mix(in srgb,var(--acc) 22%,transparent)}
+.wp a.wiki-link[data-h="3"]{background:color-mix(in srgb,var(--acc) 34%,transparent)}
+.wp a.wiki-link[data-h="4"]{background:color-mix(in srgb,var(--acc) 50%,transparent)}
+.wp a.wiki-link.picked{outline:3px solid var(--acc);background:color-mix(in srgb,var(--acc) 60%,transparent);color:var(--ink);animation:pulse .7s 2}
+@keyframes pulse{50%{outline-offset:4px}}
+.side .card{margin-bottom:12px;padding:12px 14px}
+.side h3{margin:0 0 8px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3)}
+.kv{display:flex;justify-content:space-between;font-size:13.5px;padding:2px 0}.kv b{font-variant-numeric:tabular-nums}
+.goal img{max-width:100%;border-radius:8px;margin:6px 0}.goal .gl{font-size:13px;color:var(--ink2);line-height:1.45}
+.hops{font-size:12.5px;max-height:260px;overflow:auto}
+.hops div{display:grid;grid-template-columns:18px minmax(0,1fr) 46px 54px;gap:6px;padding:3px 0;border-top:1px solid var(--line);align-items:center}
+.hops div span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mk{font-weight:800;text-align:center}.mk.closer{color:var(--green)}.mk.same{color:var(--amber)}.mk.farther,.mk.lost{color:var(--red)}
+.cand{display:grid;grid-template-columns:16px minmax(0,1fr) 40px;gap:6px;align-items:center;font-size:12.5px;margin:3px 0}
+.cand .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cand.played .t{font-weight:700}
+.cand .trk{grid-column:2/4;height:6px;border-radius:3px;background:var(--surface);overflow:hidden}.cand .trk i{display:block;height:100%;background:var(--ink3)}.cand.played .trk i{background:var(--acc)}
+.cand .pc{text-align:right;font-family:var(--mono);color:var(--ink3);font-size:11.5px}
+.controls input[type=range]{width:110px}
+details.adv{margin:6px 0 4px}details.adv summary{cursor:pointer;color:var(--ink3);font-size:13px}details.adv .controls{margin-top:8px}
+.controls input[type=number]{width:70px}
+</style>
+</head>
+<body>
+<header><a href="/">&larr; Decida</a><h1>Wikispeedia game</h1><span style="color:var(--ink3);font-size:13px">pick a start page and a goal page and watch the model click its way there</span></header>
+<main class="wide">
+<section class="panel">
+  <div id="gate"><b id="gateT">Checking the Wikispeedia data...</b><div class="trk"><i id="gateBar"></i></div><small id="gateS"></small><button id="gateRetry" class="ghost" style="display:none;margin-top:8px">Retry download</button></div>
+  <div id="setup">
+    <div class="pick">
+      <button id="rnd">&#127922; Random mission</button>
+      <span class="fw"><input type="text" id="inS" placeholder="Start article" autocomplete="off"><div class="sugg" id="sgS" style="display:none"></div></span>
+      <span class="arrow">&rarr;</span>
+      <span class="fw"><input type="text" id="inG" placeholder="Goal article" autocomplete="off"><div class="sugg" id="sgG" style="display:none"></div></span>
+      <button id="goCustom">Go</button>
+      <span id="pickMsg" style="font-size:13px;color:var(--ink3)"></span>
+    </div>
+    <div class="msw"><table class="ms"><thead><tr><th>Human missions (click one)</th><th>Plays</th><th>Avg clicks</th><th>Record</th><th>Shortest</th></tr></thead><tbody id="mrows"></tbody></table></div>
+  </div>
+  <div id="game" style="display:none">
+    <div class="trail" id="trail"></div>
+    <div class="banner" id="banner"></div>
+    <div class="controls">
+      <label>Model <select id="model"></select></label>
+      <button id="step">Step &#9654;</button>
+      <button id="auto" class="ghost">Auto-play &#9654;&#9654;</button>
+      <button id="stop" class="ghost" disabled>Stop &#9632;</button>
+      <label>Speed <input type="range" id="delay" min="0" max="3000" step="100" value="1200"> <span id="delayV">1.2 s</span></label>
+      <button id="newm" class="ghost">New mission</button>
+    </div>
+    <details class="adv"><summary>Advanced</summary>
+      <div class="controls">
+        <label title="Let the model click, or click yourself while the model shades the links it likes">Play <select id="mode"><option value="model">the model plays</option><option value="human">I play (model advises)</option></select></label>
+        <label title="How the model reads each hop: score every link then choose among the best (two-stage), score only, or a knockout of small choices">Method <select id="strategy"><option>two-stage</option><option>score</option><option>tournament</option></select></label>
+        <label title="What the model is told about the goal and the links. 'peek' also shows what each link leads to, which a person could only learn by opening the page">Information <select id="design"><option value="hub">goal + hubs</option><option value="goal">goal only</option><option value="lead">goal + this page's intro</option><option value="peek">goal + hubs + peek (assisted)</option><option value="titles">titles only</option></select></label>
+        <label><input type="checkbox" id="cat"> Show subject categories to the model</label>
+        <label title="Give up after this many clicks">Max clicks <input type="number" id="maxc" value="20" min="2" max="60"></label>
+        <label><input type="checkbox" id="advise" checked> Model advises when I play</label>
+      </div>
+    </details>
+    <div id="msg"></div>
+    <div class="layout">
+      <div class="card"><h2 class="at" id="at"></h2><div class="cat" id="ac"></div><div class="wp" id="wp"></div></div>
+      <div class="side">
+        <div class="card goal"><h3>Goal</h3><b id="gT"></b> <span id="gC" style="color:var(--ink3);font-size:12px"></span><div id="gI"></div><div class="gl" id="gL"></div></div>
+        <div class="card"><h3>Progress</h3>
+          <div class="kv"><span>Clicks</span><b id="kClicks">0</b></div>
+          <div class="kv"><span>Shortest from here</span><b id="kHere">-</b></div>
+          <div class="kv"><span>Shortest from start</span><b id="kOpt">-</b></div>
+          <div class="kv"><span>Human average / record</span><b id="kHum">-</b></div>
+          <div class="kv"><span>Model latency (avg)</span><b id="kLat">-</b></div></div>
+        <div class="card"><h3>The model's ranking</h3><div id="cands"><span style="color:var(--ink3);font-size:13px">not asked yet</span></div>
+          <div style="font-size:11.5px;color:var(--ink3);margin-top:6px">&#10003; closer &nbsp;= same &nbsp;&#10007; farther (from the dataset, never shown to the model)</div></div>
+        <div class="card"><h3>Pages visited</h3><div class="hops" id="hops"></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+<details class="panel adv"><summary>Model monitor: latency and the exact requests sent</summary><div id="side2"></div></details>
+</main>
+<script type="module">
+import * as G from './game.js';
+import { rng } from '../common/rng.js';
+import * as M from '../common/monitor.js';
+const { esc, pct } = M;
+const $ = s => document.querySelector(s), QP = new URLSearchParams(location.search), enc = encodeURIComponent;
+$('#side2').innerHTML = M.panelHTML({ answer: false });
+const say = (t, err) => { const m = $('#msg'); m.textContent = t || ''; m.className = t ? 'on' + (err ? ' err' : '') : ''; };
+async function api(path, init) {
+  const r = await fetch(path, init), j = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(j.detail || (j.error && j.error.message) || r.statusText); e.status = r.status; throw e; }
+  return j;
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ---------- dataset gate ----------
+let dataReady = false;
+async function ensureData() {
+  const gate = $('#gate'), bar = $('#gateBar');
+  try {
+    let st = await api('/v1/datasets/wikispeedia');
+    if (!st.present && st.state !== 'downloading') st = await api('/v1/datasets/wikispeedia/download', { method: 'POST' });
+    while (!st.present) {
+      if (st.state === 'error') throw new Error(st.error || 'download failed');
+      gate.className = ''; $('#gateT').textContent = `Downloading the Wikispeedia data (${Math.round(st.size / 1e6)} MB, once): 4,604 articles with pages and images...`;
+      bar.style.width = Math.min(100, (100 * st.done) / st.size) + '%';
+      $('#gateS').textContent = `${st.done ? Math.round(st.done / 1e6) : 0} of ${Math.round(st.size / 1e6)} MB. Source: ${st.source}. Licence: ${st.licence}`;
+      await new Promise(r => setTimeout(r, 700)); st = await api('/v1/datasets/wikispeedia');
+    }
+    gate.className = 'ok'; dataReady = true; await loadMissions();
+  } catch (e) {
+    gate.className = ''; $('#gateT').textContent = 'The Wikispeedia data is not available'; bar.style.width = '0';
+    $('#gateS').textContent = e.status === 404 && /^Not Found$/i.test(e.message) ? 'This server was started before Wikispeedia support was added. Restart `decida serve` and reload this page.' : e.message;
+    $('#gateRetry').style.display = 'inline-block';
+  }
+}
+$('#gateRetry').addEventListener('click', () => { $('#gateRetry').style.display = 'none'; ensureData(); });
+async function loadModels() {
+  try {
+    const d = await api('/v1/models'), ready = d.models.filter(m => m.status === 'ready' || m.status === 'registered');
+    $('#model').innerHTML = ready.map(m => `<option value="${esc(m.name)}">${esc(m.name)} (${m.backend})</option>`).join('');
+    const want = QP.get('model') || d.default; if (ready.some(m => m.name === want)) $('#model').value = want;
+    if (!ready.length) say('No models loaded. Start the server with --model.', true);
+  } catch (e) { say('Cannot reach the Decida server: ' + e.message, true); }
+}
+
+// ---------- choosing a mission ----------
+let missions = [];
+async function loadMissions() {
+  missions = (await api('/v1/wikispeedia/missions?min_plays=8&limit=60')).missions;
+  $('#mrows').innerHTML = missions.map((m, i) => `<tr class="m" data-i="${i}"><td>${esc(m.start)} &rarr; ${esc(m.target)}</td><td class="n">${m.plays}</td><td class="n">${m.avg_clicks.toFixed(1)}</td><td class="n">${m.record_clicks}</td><td class="n">${m.hops ?? '-'}</td></tr>`).join('');
+}
+$('#mrows').addEventListener('click', e => { const tr = e.target.closest('tr.m'); if (tr) begin(missions[+tr.dataset.i]); });
+$('#rnd').addEventListener('click', async () => {
+  if (!dataReady) return;
+  const all = (await api('/v1/wikispeedia/missions?min_plays=5&limit=2000')).missions.filter(m => m.hops >= 2 && m.hops <= 4);
+  begin(all[Math.floor(Math.random() * all.length)]);
+});
+for (const [inp, box] of [['#inS', '#sgS'], ['#inG', '#sgG']]) {   // title autocomplete
+  let t = null;
+  $(inp).addEventListener('input', () => { clearTimeout(t); t = setTimeout(async () => {
+    const q = $(inp).value; if (!dataReady || !q.trim()) { $(box).style.display = 'none'; return; }
+    const { titles } = await api('/v1/wikispeedia/search?limit=8&q=' + enc(q));
+    $(box).innerHTML = titles.map(x => `<div>${esc(x)}</div>`).join(''); $(box).style.display = titles.length ? 'block' : 'none'; }, 120); });
+  $(box).addEventListener('mousedown', e => { if (e.target.tagName === 'DIV') { $(inp).value = e.target.textContent; $(box).style.display = 'none'; } });
+  $(inp).addEventListener('blur', () => setTimeout(() => { $(box).style.display = 'none'; }, 150));
+}
+$('#goCustom').addEventListener('click', async () => {
+  const s = $('#inS').value.trim(), g = $('#inG').value.trim(); $('#pickMsg').textContent = '';
+  if (!s || !g) { $('#pickMsg').textContent = 'Type a start and a goal.'; return; }
+  try {
+    const a = await api(`/v1/wikispeedia/article?title=${enc(s)}&target=${enc(g)}`); await api('/v1/wikispeedia/article?title=' + enc(g));
+    begin({ start: s, target: g, hops: a.hops_to_target, plays: 0, avg_clicks: null, record_clicks: null });
+  } catch (e) { $('#pickMsg').textContent = e.status === 404 ? 'Both must be article titles (use the suggestions).' : e.message; }
+});
+
+// ---------- the game ----------
+let S = null;
+const cache = new Map(), pageCache = new Map();
+const article = async (title, goal) => { const k = title + '\u0001' + goal; if (!cache.has(k)) cache.set(k, await api(`/v1/wikispeedia/article?title=${enc(title)}&target=${enc(goal)}`)); return cache.get(k); };
+const pageOf = async title => { if (!pageCache.has(title)) pageCache.set(title, await api('/v1/wikispeedia/page?title=' + enc(title))); return pageCache.get(title); };
+const post = async request => { const t0 = performance.now(), json = await api('/v1/systemone', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: S.model, ...request }) }); return { json, ms: performance.now() - t0 }; };
+
+async function begin(m) {
+  if (S) S.token++;
+  const goalView = await article(m.target, m.target), goalPage = await pageOf(m.target).catch(() => null), start = await article(m.start, m.target);
+  const firstImg = goalPage && /<img [^>]*src="([^"]+)"/.exec(goalPage.html);
+  S = { m, goal: m.target, goalInfo: { title: m.target, category: goalView.category, lead: goalView.lead, summary: goalView.lead }, run: G.newRun(m.start, m.target, start.hops_to_target, Math.max(2, +$('#maxc').value || 20)),
+    cur: m.start, view: start, hops: [], lat: [], tokens: 0, requests: 0, verdicts: {}, steps: 0, closer: 0, last: null, auto: false, busy: false, token: (S ? S.token : 0) + 1,
+    model: $('#model').value, strategy: $('#strategy').value, design: $('#design').value, hints: $('#cat').checked ? 'category' : 'none', mode: $('#mode').value, advice: null };
+  $('#setup').style.display = 'none'; $('#game').style.display = 'block'; $('#banner').className = 'banner'; say('');
+  $('#gT').textContent = m.target; $('#gC').textContent = goalView.category; $('#gL').textContent = goalView.lead.slice(0, 300) + (goalView.lead.length > 300 ? '...' : '');
+  $('#gI').innerHTML = firstImg ? `<img src="${firstImg[1]}" alt="">` : '';
+  $('#kOpt').textContent = start.hops_to_target ?? '-'; $('#kHum').textContent = m.avg_clicks ? `${m.avg_clicks.toFixed(1)} / ${m.record_clicks}` : 'not recorded';
+  $('#hops').innerHTML = ''; $('#cands').innerHTML = '<span style="color:var(--ink3);font-size:13px">not asked yet</span>'; M.resetMonitor();
+  setButtons(); await show(); if (S.mode === 'human' && $('#advise').checked) advise();
+}
+$('#newm').addEventListener('click', () => { if (S) { S.token++; S.auto = false; S.busy = false; } $('#game').style.display = 'none'; $('#setup').style.display = 'block'; $('#banner').className = 'banner'; setButtons(); });
+
+function trail() {
+  const r = S.run, chips = r.path.map((t, i) => `<span class="chip ${i === 0 ? 'start' : r.judged[i - 1]}${i === r.path.length - 1 && r.status === 'playing' ? ' now' : ''}">${esc(t)}</span>`);
+  chips.push(`<span class="chip goal${r.status === 'won' ? ' won' : ''}">&#9873; ${esc(S.goal)}</span>`);
+  $('#trail').innerHTML = chips.join('<span class="arrow">&rsaquo;</span>');
+}
+
+async function show() {  // render the current article, mark visited links and the goal
+  const pg = await pageOf(S.cur).catch(() => ({ html: '<p>(no page)</p>', category: '' })), r = S.run;
+  $('#at').textContent = S.cur; $('#ac').textContent = pg.category; $('#wp').innerHTML = pg.html; $('#wp').scrollTop = 0;
+  for (const a of $('#wp').querySelectorAll('a.wiki-link')) { const t = a.dataset.title; if (r.visited.has(t)) a.classList.add('seen'); if (t === S.goal) a.classList.add('goal'); }
+  S.view = await article(S.cur, S.goal); trail(); stats();
+}
+
+function heat(ranking, pickTitle) {  // shade the links in the article by how the model ranked them
+  for (const a of $('#wp').querySelectorAll('a.wiki-link')) { a.removeAttribute('data-h'); a.classList.remove('picked'); }
+  const top = ranking.slice(0, 8), max = Math.max(...top.map(x => x.score), 1e-9);
+  for (const x of top) for (const a of $('#wp').querySelectorAll(`a.wiki-link[data-title="${CSS.escape(x.title)}"]`)) a.dataset.h = String(1 + Math.min(3, Math.floor(4 * x.score / max - 1e-9)));
+  if (pickTitle) { const el = $('#wp').querySelector(`a.wiki-link[data-title="${CSS.escape(pickTitle)}"]:not(.seen)`); if (el) { el.classList.add('picked'); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } }
+}
+
+function cands(r, view, opts) {
+  const by = new Map(opts.map(l => [l.title, l])), top = r.ranking.slice(0, 8), max = Math.max(...top.map(x => x.score), 1e-9), prob = top.reduce((a, x) => a + x.score, 0) < 1.01;
+  $('#cands').innerHTML = top.map(x => { const l = by.get(x.title), v = l ? G.judge(view.hops_to_target, l.hops_to_target) : 'lost', mk = { closer: '&#10003;', same: '=', farther: '&#10007;', lost: '&#10007;' }[v];
+    return `<div class="cand${r.pick && x.title === r.pick.title ? ' played' : ''}"><span class="mk ${v}">${mk}</span><span class="t" title="${esc(x.title)}">${esc(x.title)}</span><span class="pc">${prob ? Math.round(100 * x.score) + '%' : x.score.toFixed(1)}</span><span class="trk"><i style="width:${Math.max(3, 100 * x.score / max)}%"></i></span></div>`; }).join('');
+}
+
+function stats() {
+  const s = S, r = s.run; $('#kClicks').textContent = `${r.clicks}/${r.maxClicks}`; $('#kHere').textContent = s.view && s.view.hops_to_target != null ? s.view.hops_to_target : '-';
+  $('#kLat').textContent = s.lat.length ? Math.round(s.lat.reduce((a, b) => a + b, 0) / s.lat.length) + ' ms' : '-';
+  M.update({ lat: s.lat, tokens: s.tokens, counts: s.verdicts, countsLabel: 'clicks', done: s.steps, last: null, cut: null });
+  $('#stats').innerHTML = `<div class="stat"><small>Requests</small><b>${s.requests}</b></div><div class="stat"><small>Closer clicks</small><b>${s.steps ? Math.round(100 * s.closer / s.steps) + '%' : '-'}</b></div><div class="stat"><small>Latency p50</small><b>${s.lat.length ? Math.round(pct(s.lat, .5)) + ' ms' : '-'}</b></div>`;
+}
+
+// ask the model what it would click; returns { pick, ranking, calls }
+async function decide() {
+  const opts = G.options(S.view, S.run); if (!opts.length) return null;
+  const r = await G.decideHop(post, { article: S.view, goal: S.goalInfo, links: opts, strategy: S.strategy, design: S.design, hints: S.hints });
+  for (const c of r.calls) { S.lat.push(c.ms); S.tokens += c.tokens; S.requests++; }
+  r.opts = opts; r.ms = r.calls.reduce((a, c) => a + c.ms, 0); const best = r.ranking[0]; r.conf = best ? best.score : 0; return r;
+}
+
+async function advise() {  // human mode: show the model's ranking on the page without clicking
+  const tok = S.token, cur = S.cur; S.advice = null; $('#cands').innerHTML = '<span style="color:var(--ink3);font-size:13px">the model is thinking...</span>';
+  try { const r = await decide(); if (!r || tok !== S.token || cur !== S.cur) return; S.advice = r; heat(r.ranking, null); cands(r, S.view, r.opts); stats(); } catch (e) { say('The model failed: ' + e.message, true); }
+}
+
+async function clickLink(title, r, source) {  // apply a click (by the model or by the person)
+  const run = S.run, v = G.judge(S.view.hops_to_target, (S.view.links.find(l => l.title === title) || {}).hops_to_target), from = S.cur;
+  S.steps++; if (v === 'closer') S.closer++; S.verdicts[v] = (S.verdicts[v] || 0) + 1;
+  S.hops.push({ from, to: title, v, conf: r && r.conf, ms: r && r.ms, source });
+  G.click(run, title, v); S.cur = title;
+  const p = r && r.ranking.find(x => x.title === title); $('#hops').innerHTML = S.hops.map((h, i) => `<div><span class="mk ${h.v}">${{ closer: '&#10003;', same: '=', farther: '&#10007;', lost: '&#10007;' }[h.v]}</span><span title="${esc(h.from)} to ${esc(h.to)}">${i + 1}. ${esc(h.to)}</span><span>${h.source === 'you' ? 'you' : 'model'}</span><span style="text-align:right;color:var(--ink3)">${h.ms ? Math.round(h.ms) + ' ms' : ''}</span></div>`).join('');
+  $('#hops').scrollTop = 1e6; void p; S.advice = null;
+  if (run.status !== 'playing') { await show(); ending(); return; }
+  await show(); if (S.mode === 'human' && $('#advise').checked) advise();
+}
+
+function ending() {
+  const r = S.run, b = $('#banner'), m = S.m; S.auto = false; setButtons();
+  const human = m.avg_clicks ? `, humans average ${m.avg_clicks.toFixed(1)} (record ${m.record_clicks})` : '';
+  b.className = 'banner on ' + (r.status === 'won' ? 'win' : 'lose');
+  b.innerHTML = r.status === 'won' ? `<b>Reached ${esc(S.goal)} in ${r.clicks} click${r.clicks === 1 ? '' : 's'}.</b> Shortest possible ${r.hops}${human}.` : `<b>${r.status === 'stuck' ? 'No unvisited links left' : 'Out of clicks'} after ${r.clicks} clicks.</b> Shortest possible was ${r.hops}${human}.`;
+}
+
+async function modelStep() {
+  const g = S;   // this game; the global S may point at a newer one by the time we finish
+  if (g.busy || g.run.status !== 'playing') return; g.busy = true; setButtons(); const tok = g.token;
+  try {
+    const r = await decide();
+    if (tok !== S.token) return;
+    if (!r) { S.run.status = 'stuck'; ending(); return; }
+    heat(r.ranking, r.pick.title); cands(r, S.view, r.opts); stats();
+    if (+$('#delay').value) await sleep(+$('#delay').value);
+    if (tok !== S.token) return;
+    await clickLink(r.pick.title, r, 'model');
+  } catch (e) { g.auto = false; say('The model failed: ' + e.message, true); } finally { g.busy = false; setButtons(); }
+}
+async function autoLoop() { S.auto = true; setButtons(); const tok = S.token; while (S.auto && S.token === tok && S.run.status === 'playing') await modelStep(); if (S && S.token === tok) { S.auto = false; setButtons(); } }
+
+function setButtons() {
+  const on = S && S.run.status === 'playing', human = S && S.mode === 'human';
+  $('#step').disabled = !on || S.busy || human; $('#auto').disabled = !on || S.auto || human; $('#stop').disabled = !S || !S.auto;
+}
+$('#step').addEventListener('click', modelStep);
+$('#auto').addEventListener('click', autoLoop);
+$('#stop').addEventListener('click', () => { S.auto = false; setButtons(); });
+$('#delay').addEventListener('input', () => { $('#delayV').textContent = (+$('#delay').value / 1000).toFixed(1) + ' s'; });
+$('#mode').addEventListener('change', () => { if (!S) return; S.mode = $('#mode').value; setButtons(); if (S.mode === 'human' && $('#advise').checked) advise(); else if (S.mode === 'model') { S.auto = false; heat([], null); } });
+$('#advise').addEventListener('change', () => { if (S && S.mode === 'human') { if ($('#advise').checked) advise(); else { heat([], null); $('#cands').innerHTML = '<span style="color:var(--ink3);font-size:13px">advice is off</span>'; } } });
+for (const id of ['strategy', 'design', 'cat', 'model']) $('#' + id).addEventListener('change', () => { if (S) { S.model = $('#model').value; S.strategy = $('#strategy').value; S.design = $('#design').value; S.hints = $('#cat').checked ? 'category' : 'none'; if (S.mode === 'human' && $('#advise').checked && S.run.status === 'playing') advise(); } });
+$('#wp').addEventListener('click', e => {  // a person clicking a link in the article
+  const a = e.target.closest('a.wiki-link'); if (!a) return; e.preventDefault();
+  if (!S || S.mode !== 'human' || S.run.status !== 'playing' || S.busy) return;
+  if (a.classList.contains('seen')) { say('You have already been to that page.', true); return; } say('');
+  const r = S.advice; clickLink(a.dataset.title, r, 'you');
+});
+if (QP.get('delay')) { $('#delay').value = QP.get('delay'); $('#delayV').textContent = (+QP.get('delay') / 1000).toFixed(1) + ' s'; }
+for (const k of ['mode', 'strategy', 'design']) if (QP.get(k)) $('#' + k).value = QP.get(k);
+window.__play = { get S() { return S; }, begin, get ready() { return dataReady; } };
+loadModels(); ensureData().then(() => { if (QP.get('start') && QP.get('goal') && dataReady) { $('#inS').value = QP.get('start'); $('#inG').value = QP.get('goal'); $('#goCustom').click(); } });
+</script>
+</body>
+</html>

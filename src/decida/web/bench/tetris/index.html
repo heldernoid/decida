@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decida bench: Tetris (live)</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2024%2024%22%3E%3Crect%20x=%221%22%20y=%2216%22%20width=%224%22%20height=%225%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%227%22%20y=%223%22%20width=%224%22%20height=%2218%22%20rx=%221%22%20fill=%22%233a34d2%22/%3E%3Crect%20x=%2213%22%20y=%2213%22%20width=%224%22%20height=%228%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%2219%22%20y=%2218%22%20width=%224%22%20height=%223%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../common/bench.css">
+<!-- Live layout and panels adapted from Agent (JEV) playing Tetris: https://github.com/Yasserbhb/Agent-JEV-Tetris (see THIRD_PARTY.md) -->
+<style>
+.play{display:flex;gap:16px;justify-content:center;align-items:flex-start}
+#cv{width:280px;max-width:none}
+#nx{width:110px;max-width:none}
+.side small{display:block;color:var(--ink3);font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+.hud{font-size:12.5px;color:var(--ink2);margin-top:8px;text-align:center}
+.hud b{color:var(--ink);font-family:var(--mono)}
+</style>
+</head>
+<body>
+<header><a href="/">&larr; Decida</a><h1>Tetris · live</h1><span style="color:var(--ink3);font-size:13px">the piece falls; the model moves and turns it, one action per turn</span></header>
+<main>
+<section class="panel">
+  <div class="play">
+    <canvas id="cv" width="280" height="560" aria-label="Tetris board"></canvas>
+    <div class="side"><small>Next</small><canvas id="nx" width="110" height="70" aria-label="Next piece"></canvas></div>
+  </div>
+  <div class="hud" id="hud"></div>
+  <div class="controls">
+    <label>Model <select id="model"></select></label>
+    <label title="A number replays that exact game; random picks a new one every run">Bag <input type="text" id="seed" value="random" size="8"></label>
+    <label title="spots: the game describes every landing spot in a sentence and the model judges each one (the Laya playground approach); the game then moves the piece there. keys: the model presses the keys itself.">Strategy <select id="strategy"><option value="spots" selected>spots: judge each landing spot</option><option value="keys">keys: press the keys</option></select></label>
+    <label title="What the request tells the model (keys strategy only)">Variant <select id="hints"><option value="auto" selected>auto (coach for hosted models, plan for local)</option><option value="coach">coach (full structured payload, for large models)</option><option value="plan">rich + best plan in the state</option><option value="best">rich + Best marker on an option</option><option value="rich">rich (outcomes in words)</option><option value="none">plain actions only</option></select></label>
+    <label title="Milliseconds per row of fall. Gravity runs on the clock, so a slow model loses rows">Gravity <input type="number" id="gravity" value="700" min="100" max="5000" step="100"> ms/row</label>
+    <label title="Minimum time between actions, so you can watch the piece move">Action delay <input type="number" id="delay" value="120" min="0" max="2000" step="20"> ms</label>
+    <label>Pieces <input type="number" id="pieces" value="30" min="1" max="2000"></label>
+    <button id="go">Start</button>
+    <button id="one" class="ghost">Step once</button>
+    <button id="new" class="ghost">New game</button>
+  </div>
+  <div id="msg"></div>
+  <div id="report"></div>
+  <p class="note">Every turn the model gets one choice over the moves that are possible right now. Each option says where the piece would land if it fell straight down after that action. Shadow: the faint copy of the piece shows where it stops if left alone. Gravity keeps running while the model thinks.</p>
+</section>
+<section class="panel" id="side"></section>
+</main>
+<script type="module">
+import * as P from './game.js';
+import * as L from './live.js';
+import { pickSeed } from '../common/rng.js';
+import * as M from '../common/monitor.js';
+const { css, esc, pct, stat } = M;
+const $ = s => document.querySelector(s);
+const QP = new URLSearchParams(location.search);
+$('#side').innerHTML = M.panelHTML();
+const cv = $('#cv'), ctx = cv.getContext('2d'), nx = $('#nx'), nctx = nx.getContext('2d');
+const K = 28;
+const COLOR = { I: '#3fc7d8', O: '#e8c44a', J: '#4b7bec', L: '#e08b3c', S: '#4cc463', T: '#a765e0', Z: '#e05c5c' }; // the usual Tetris palette
+const say = (t, err) => { const m = $('#msg'); m.textContent = t || ''; m.className = t ? 'on' + (err ? ' err' : '') : ''; };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let S = null, backends = {};
+
+async function loadModels() {
+  try {
+    const d = await (await fetch('/v1/models')).json();
+    backends = Object.fromEntries(d.models.map(m => [m.name, m.backend]));
+    const ready = d.models.filter(m => m.status === 'ready' || m.status === 'registered');
+    $('#model').innerHTML = ready.map(m => `<option value="${esc(m.name)}">${esc(m.name)} (${m.backend})</option>`).join('');
+    const want = QP.get('model') || d.default;
+    if (ready.some(m => m.name === want)) $('#model').value = want;
+    if (!ready.length) say('No models loaded. Start the server with --model.', true);
+  } catch (e) { say('Cannot reach the Decida server: ' + e.message, true); }
+}
+
+function resolveHints() { const h = $('#hints').value, m = $('#model').value; return h === 'auto' ? (backends[m] === 'remote' ? 'coach' : 'plan') : h; }
+const thinkMs = () => { const a = S && S.lat.slice(-5); return a && a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) : 500; };
+
+function newRun(keepRunning = false) {
+  const seed = pickSeed($('#seed').value);
+  return { seed, g: L.newLive(seed), running: keepRunning, busy: false, waiting: false, anim: false, lastDrop: performance.now(),
+    model: $('#model').value, hints: resolveHints(), gravityMs: Math.max(100, +$('#gravity').value || 700), delay: Math.max(0, +$('#delay').value),
+    budget: Math.max(1, +$('#pieces').value || 30), strategy: $('#strategy').value, goal: null, top3: 0, medSum: 0, spreadSum: 0, lat: [], counts: {}, done: 0, agree: 0, wasted: 0, stale: 0, illegal: 0, actions: 0, tokens: 0,
+    cutTurns: 0, cutOptions: 0, stateCut: false, errors: 0, last: null, finished: false };
+}
+
+async function post(body) {
+  const r = await fetch('/v1/systemone', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: S.model, ...body }) });
+  const j = await r.json();
+  if (!r.ok) throw new Error((j.error && j.error.message) || r.statusText);
+  return j;
+}
+
+function onLocked() {
+  if (S.g.over || S.g.pieces >= S.budget) finish(S.g.over ? 'over' : 'done');
+}
+
+function gravityCatchUp() { // gravity runs on the clock: a slow answer cannot stop the fall
+  if (S.anim) { S.lastDrop = performance.now(); return; }
+  const now = performance.now();
+  while (now - S.lastDrop >= S.gravityMs && !S.finished) {
+    S.lastDrop += S.gravityMs;
+    if (L.gravity(S.g).locked) { onLocked(); S.lastDrop = performance.now(); return; }
+  }
+}
+
+async function hardDrop() { // fall visibly instead of teleporting
+  S.anim = true;
+  while (L.dropY(S.g) > S.g.cur.y) { S.g.cur = { ...S.g.cur, y: S.g.cur.y + 1 }; draw(); await sleep(18); }
+  S.anim = false;
+}
+
+// ----- spots strategy (the Laya playground's Tetris): judge every landing spot, then the game drives the piece there -----
+function displayReq(req) { // the monitor shows a couple of questions, not all of them
+  const ids = Object.keys(req.questions), q = Object.fromEntries(ids.slice(0, 2).map(k => [k, req.questions[k]]));
+  if (ids.length > 2) q['…'] = `${ids.length - 2} more questions`;
+  return { state: req.state, questions: q };
+}
+
+async function turnSpots() {
+  const g = S.g;
+  if (S.goal && S.goal.pieceId === g.pieceId) { // autopilot: one key press toward the chosen spot, and a drop once it is there
+    const a = L.stepToward(g, S.goal.spot);
+    if (a === 'hard_drop') await hardDrop();
+    const r = L.act(g, a); if (r.ok) S.actions++; else S.illegal++;
+    if (r.locked) { onLocked(); S.lastDrop = performance.now(); }
+    S.waiting = true; await sleep(Math.max(35, S.delay / 2)); S.waiting = false;
+    return;
+  }
+  const id = g.pieceId, { request, spots } = L.spotsRequest(g), plan = P.plan(g), t0 = performance.now();
+  S.busy = true;
+  let j;
+  try { j = await post(request); }
+  catch (e) { S.errors++; say('Request failed: ' + e.message, true); S.busy = false; if (S.errors >= 3) finish('errors'); return; }
+  const ms = Math.round(performance.now() - t0);
+  S.lat.push(ms); S.done++; S.tokens += (j.usage && j.usage.input_tokens) || 0;
+  const cut = j.x_decida && j.x_decida.truncation;
+  if (cut && (cut.options_cut || cut.state_cut)) { S.cutTurns++; S.cutOptions = Math.max(S.cutOptions, cut.options_cut); S.stateCut = S.stateCut || cut.state_cut; }
+  const pick = L.pickSpot(spots, j.answers), rank = plan.ranked.findIndex(x => x.id === pick.spot.id);
+  S.medSum += pick.median; S.spreadSum += pick.spread;
+  if (rank === 0) S.agree++; if (rank >= 0 && rank < 3) S.top3++;
+  S.counts[pick.spot.name] = (S.counts[pick.spot.name] || 0) + 1;
+  const top = spots.map((p, i) => [p.id, pick.ps[i]]).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  S.last = { probs: Object.fromEntries(top), choice: pick.spot.id, confidence: pick.ps[pick.index], ms, oracle: plan.best, subject: `piece ${g.cur.k}`, msLabel: `(${spots.length} landing spots)`, request: displayReq(request),
+    raw: { ...j, answers: Object.fromEntries(Object.entries(j.answers).slice(0, 3)), '…': `${Object.keys(j.answers).length - 3} more answers` } };
+  if (g.pieceId !== id || S.finished) S.stale++;            // the piece landed while the model was thinking
+  else S.goal = { pieceId: id, spot: pick.spot };
+  S.busy = false;
+}
+
+async function turn() {
+  if (S.strategy === 'spots') return turnSpots();
+  const g = S.g, id = g.pieceId, { request, oracle, moveOf } = L.toRequest(g, S.hints, S.gravityMs, thinkMs()), t0 = performance.now();
+  S.busy = true;
+  let j;
+  try { j = await post(request); }
+  catch (e) { S.errors++; say('Request failed: ' + e.message, true); S.busy = false; if (S.errors >= 3) finish('errors'); return; }
+  const ms = Math.round(performance.now() - t0);
+  S.lat.push(ms); S.done++; S.tokens += (j.usage && j.usage.input_tokens) || 0;
+  const cut = j.x_decida && j.x_decida.truncation;
+  if (cut && (cut.options_cut || cut.state_cut)) { S.cutTurns++; S.cutOptions = Math.max(S.cutOptions, cut.options_cut); S.stateCut = S.stateCut || cut.state_cut; }
+  const a = j.answers.move, m = (moveOf && moveOf[a.choice]) || a.choice;
+  S.counts[m] = (S.counts[m] || 0) + 1;
+  const oracleKey = Object.entries(moveOf || {}).find(([, v]) => v === oracle.action);
+  S.last = { probs: a.probabilities, choice: a.choice, confidence: a.confidence, ms, oracle: oracleKey ? oracleKey[0] : oracle.action, request, raw: j };
+  if (g.pieceId !== id || S.finished) { S.stale++; }          // the piece locked while we waited: this answer is about an old piece
+  else {
+    if (m === oracle.action) S.agree++;
+    const last = g.trail[g.trail.length - 1];
+    if (L.REVERSE[last] === m) S.wasted++;
+    if (m === 'hard_drop') await hardDrop();
+    const r = L.act(g, m);
+    if (!r.ok) S.illegal++; else S.actions++;
+    if (r.locked) { onLocked(); S.lastDrop = performance.now(); }
+  }
+  S.busy = false;
+  if (S.delay) { S.waiting = true; await sleep(S.delay); S.waiting = false; }
+}
+
+function finish(why) {
+  if (!S || S.finished) return;
+  S.finished = true; S.running = false; $('#go').textContent = 'Start';
+  const g = S.g, f = P.features(g.board), p50 = pct(S.lat, .5), p95 = pct(S.lat, .95);
+  const r = $('#report'); r.className = 'on';
+  r.innerHTML = `<b>${why === 'over' ? `Topped out after ${g.pieces} pieces, ${g.lines} lines` : why === 'errors' ? 'Stopped: request errors' : why === 'stopped' ? 'Stopped' : `${g.lines} lines in ${g.pieces} pieces, score ${g.score}`}</b><br>
+    model <b>${esc(S.model)}</b> · bag ${S.seed} · ${S.strategy === 'spots' ? `strategy spots (top-1 ${S.done ? Math.round(100 * S.agree / S.done) : 0}%, top-3 ${S.done ? Math.round(100 * S.top3 / S.done) : 0}% vs the oracle)` : `strategy keys, variant ${S.hints}`} · gravity ${S.gravityMs} ms/row · action delay ${S.delay} ms<br>
+    ${S.done} decisions · agreement with oracle ${S.done ? Math.round(100 * S.agree / S.done) : 0}% · undid own move ${S.wasted} · stale answers ${S.stale} · illegal ${S.illegal} · ${g.pieces ? (S.actions / g.pieces).toFixed(1) : '0'} actions per piece · final holes ${f.holes}, height ${f.max}<br>
+    moves chosen: ${Object.entries(S.counts).sort((x, y) => y[1] - x[1]).map(([k, v]) => `${k} ${Math.round(100 * v / Math.max(1, S.done))}%`).join(', ') || 'none'}<br>
+    ${S.cutTurns ? `<b style="color:var(--amber)">Warning: the token budget cut text on ${S.cutTurns} requests (up to ${S.cutOptions} options${S.stateCut ? ', and the board state' : ''}); start the server with --head-tokens/--option-tokens/--max-len to let it through.</b><br>` : ''}
+    latency p50 ${p50 == null ? 'n/a' : p50} ms, p95 ${p95 == null ? 'n/a' : p95} ms · ${S.tokens.toLocaleString()} input tokens`;
+}
+
+function render() {
+  const g = S.g, f = P.features(g.board), p50 = pct(S.lat, .5), p95 = pct(S.lat, .95);
+  const spots = S.strategy === 'spots';
+  $('#stats').innerHTML = (spots
+    ? [stat('Lines', g.lines), stat('Pieces', `${g.pieces}/${S.budget}`), stat('Score', g.score),
+       stat('Top-1 vs oracle', S.done ? Math.round(100 * S.agree / S.done) + '%' : '–'), stat('Top-3 vs oracle', S.done ? Math.round(100 * S.top3 / S.done) + '%' : '–'), stat('Median P(clean)', S.done ? Math.round(100 * S.medSum / S.done) + '%' : '–'),
+       stat('Best minus median', S.done ? Math.round(100 * S.spreadSum / S.done) + ' pts' : '–'), stat('Holes', f.holes, f.holes > 6), stat('Stack height', f.max, f.max > 15), stat('Latency p50', p50 == null ? '–' : p50 + ' ms')]
+    : [stat('Lines', g.lines), stat('Pieces', `${g.pieces}/${S.budget}`), stat('Score', g.score),
+       stat('Agreement', S.done ? Math.round(100 * S.agree / S.done) + '%' : '–'), stat('Undid own move', S.wasted, S.wasted > 5), stat('Stale', S.stale, S.stale > 0),
+       stat('Holes', f.holes, f.holes > 6), stat('Stack height', f.max, f.max > 15), stat('Latency p50', p50 == null ? '–' : p50 + ' ms')]).join('');
+  M.update({ lat: S.lat, tokens: S.tokens, counts: S.counts, done: S.done, last: S.last, cut: { turns: S.cutTurns, options: S.cutOptions, state: S.stateCut } });
+}
+
+
+function cell(c, x, y, k, color, alpha = 1) { c.globalAlpha = alpha; c.fillStyle = color; c.fillRect(x * k + 1, y * k + 1, k - 2, k - 2); c.globalAlpha = 1; }
+
+function draw() {
+  const g = S ? S.g : L.newLive(+($('#seed') || { value: 1 }).value || 1);
+  ctx.fillStyle = css('--surface'); ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.strokeStyle = css('--line'); ctx.lineWidth = 1;
+  for (let x = 1; x < P.COLS; x++) { ctx.beginPath(); ctx.moveTo(x * K + .5, 0); ctx.lineTo(x * K + .5, cv.height); ctx.stroke(); }
+  for (let y = 1; y < P.ROWS; y++) { ctx.beginPath(); ctx.moveTo(0, y * K + .5); ctx.lineTo(cv.width, y * K + .5); ctx.stroke(); }
+  g.board.forEach((row, y) => row.forEach((v, x) => { if (v) cell(ctx, x, y, K, COLOR[v] || css('--ink2')); }));
+  if (!g.over) {
+    for (const [x, y] of L.cellsAbs({ ...g.cur, y: L.dropY(g) })) cell(ctx, x, y, K, COLOR[g.cur.k], .2); // landing shadow
+    for (const [x, y] of L.cellsAbs(g.cur)) cell(ctx, x, y, K, COLOR[g.cur.k]);
+  } else { ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0, 0, cv.width, cv.height); ctx.fillStyle = '#fff'; ctx.font = '600 20px ui-sans-serif,system-ui'; ctx.textAlign = 'center'; ctx.fillText('GAME OVER', cv.width / 2, cv.height / 2); }
+  nctx.clearRect(0, 0, nx.width, nx.height);
+  const cs = P.ROTATIONS[g.next][0], w = Math.max(...cs.map(c => c[0])) + 1, h = Math.max(...cs.map(c => c[1])) + 1, ks = 22;
+  for (const [x, y] of cs) cell(nctx, x + (nx.width / ks - w) / 2, y + (nx.height / ks - h) / 2, ks, COLOR[g.next]);
+  const f = P.features(g.board);
+  $('#hud').innerHTML = `bag <b>${S ? S.seed : ''}</b> · score <b>${g.score}</b> · lines <b>${g.lines}</b> · pieces <b>${g.pieces}</b> · holes <b>${f.holes}</b> · falling <b>${g.cur.k}</b> · next <b>${g.next}</b>`;
+}
+
+function frame() {
+  requestAnimationFrame(frame);
+  if (S && S.running && !S.finished) {
+    gravityCatchUp();
+    if (!S.busy && !S.waiting && !S.anim && !S.g.over && S.running) turn().then(render);
+  }
+  draw();
+}
+
+function start() {
+  if (!$('#model').value) { say('Load a model first.', true); return; }
+  say('');
+  if (!S || S.finished || S.g.over) { M.resetMonitor(); S = newRun(); $('#report').className = ''; }
+  S.model = $('#model').value; S.hints = resolveHints(); S.strategy = $('#strategy').value; S.gravityMs = Math.max(100, +$('#gravity').value || 700); S.delay = Math.max(0, +$('#delay').value);
+  S.budget = Math.max(1, +$('#pieces').value || 30); S.lastDrop = performance.now(); S.running = true; $('#go').textContent = 'Pause';
+}
+
+$('#go').addEventListener('click', () => { if (S && S.running) { S.running = false; $('#go').textContent = 'Resume'; } else start(); });
+$('#one').addEventListener('click', async () => {
+  if (!$('#model').value) return;
+  if (!S || S.finished || S.g.over) { M.resetMonitor(); S = newRun(); $('#report').className = ''; }
+  S.model = $('#model').value; S.hints = resolveHints(); S.strategy = $('#strategy').value; S.gravityMs = Math.max(100, +$('#gravity').value || 700);
+  if (!S.busy) { S.lastDrop = performance.now(); await turn(); render(); }
+});
+$('#new').addEventListener('click', () => { M.resetMonitor(); S = newRun(); $('#report').className = ''; $('#go').textContent = 'Start'; say(''); render(); });
+for (const id of ['seed', 'hints', 'strategy', 'gravity', 'delay', 'pieces']) if (QP.get(id)) $('#' + id).value = QP.get(id);
+const syncStrategy = () => { $('#hints').disabled = $('#strategy').value === 'spots'; };
+$('#strategy').addEventListener('change', syncStrategy); syncStrategy();
+window.__live = { get S() { return S; }, L, P };
+S = newRun(); render(); frame();
+loadModels().then(() => { if (QP.get('auto')) start(); });
+</script>
+</body>
+</html>

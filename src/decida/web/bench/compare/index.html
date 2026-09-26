@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decida bench: Model compare</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2024%2024%22%3E%3Crect%20x=%221%22%20y=%2216%22%20width=%224%22%20height=%225%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%227%22%20y=%223%22%20width=%224%22%20height=%2218%22%20rx=%221%22%20fill=%22%233a34d2%22/%3E%3Crect%20x=%2213%22%20y=%2213%22%20width=%224%22%20height=%228%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%2219%22%20y=%2218%22%20width=%224%22%20height=%223%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../common/bench.css">
+<style>
+main.wide{max-width:1500px}
+.models{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 12px}
+.mchip{display:flex;align-items:center;gap:7px;padding:7px 12px;border:1.5px solid var(--line);border-radius:10px;background:var(--surface);font-size:13.5px;cursor:pointer}
+.mchip input{margin:0}.mchip.on{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 9%,transparent)}
+.mchip small{color:var(--ink3)}
+.tabs{display:flex;gap:6px;margin:6px 0 14px}
+.tab{padding:7px 14px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--ink2);cursor:pointer;font-weight:600;font-size:13.5px}
+.tab[aria-pressed=true]{background:var(--acc);border-color:var(--acc);color:var(--acc-ink)}
+.pane{display:none}.pane.on{display:block}
+textarea{width:100%;min-height:70px;font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--raised);color:var(--ink);resize:vertical}
+.cols{display:grid;gap:14px;margin-top:14px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.col{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--raised)}
+.col h3{margin:0 0 2px;font-size:16px}.col .meta{font-size:12px;color:var(--ink3);margin-bottom:8px}
+.q{margin:12px 0}.q .qh{font-size:12.5px;color:var(--ink2);margin-bottom:4px}.q .qh b{color:var(--ink)}
+.bar{display:grid;grid-template-columns:minmax(70px,120px) 1fr 42px;gap:8px;align-items:center;font-size:12.5px;margin:3px 0}
+.bar .l{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bar.top .l{font-weight:700}
+.bar .t{height:12px;border-radius:4px;background:var(--surface);border:1px solid var(--line);overflow:hidden}.bar .t i{display:block;height:100%;background:var(--ink3)}.bar.top .t i{background:var(--acc)}
+.bar .p{text-align:right;font-family:var(--mono);color:var(--ink3);font-size:11.5px}
+.agree{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px}
+.ag{padding:5px 10px;border-radius:999px;font-size:12.5px;border:1px solid var(--line)}.ag.yes{border-color:var(--green);background:color-mix(in srgb,var(--green) 12%,transparent)}.ag.no{border-color:var(--red);background:var(--red-bg)}
+table.res{border-collapse:collapse;width:100%;font-size:13.5px;margin-top:10px}
+table.res th{color:var(--ink3);font-weight:600;font-size:11px;letter-spacing:.08em;text-transform:uppercase;text-align:right;padding:6px 10px;white-space:nowrap}
+table.res th:first-child,table.res td:first-child{text-align:left}
+table.res td{padding:7px 10px;border-top:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}
+table.res td b{font-size:15px}.good{color:var(--green)}.bad{color:var(--red)}
+.note2{font-size:12.5px;color:var(--ink3);margin:6px 0}
+details.items{margin-top:14px}details.items summary{cursor:pointer;color:var(--ink2);font-size:13.5px}
+table.grid{border-collapse:collapse;font-size:12.5px;width:100%;margin-top:8px}
+table.grid td,table.grid th{padding:4px 8px;border-top:1px solid var(--line);text-align:left;vertical-align:top}
+table.grid th{color:var(--ink3);font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+.cell.ok{color:var(--green)}.cell.no{color:var(--red)}.cell small{color:var(--ink3)}
+.mine .frm{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));margin-top:10px}
+.mine label.f{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
+.mine label.f input,.mine label.f select,.mine label.f textarea{display:block;width:100%;margin-top:4px;text-transform:none;letter-spacing:0;font-size:13.5px}
+.mine input[type=text]{padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--raised);color:var(--ink);font:inherit;font-size:13.5px}
+.mine textarea{min-height:64px}
+.case{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0;background:var(--raised);display:flex;gap:12px;align-items:flex-start}
+.case .body{flex:1;min-width:0}.case .q{font-weight:600;font-size:13.5px}.case .st{font-size:12.5px;color:var(--ink2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.case .meta{font-size:11.5px;color:var(--ink3);margin-top:3px}.case button{font-size:12px;padding:5px 10px}
+.badge2{display:inline-block;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:var(--ink3);margin-right:6px}
+.errs{color:var(--red);font-size:13px;margin:6px 0}
+.prog{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin:8px 0}.prog i{display:block;height:100%;width:0;background:var(--acc);transition:width .2s}
+</style>
+</head>
+<body>
+<header><a href="/">&larr; Decida</a><h1>Model compare</h1><span style="color:var(--ink3);font-size:13px">the same questions to several models, side by side</span></header>
+<main class="wide">
+<section class="panel">
+  <div style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3)">Models to compare</div>
+  <div class="models" id="models"></div>
+  <div class="tabs"><button class="tab" id="tabSide" aria-pressed="true">Side by side</button><button class="tab" id="tabSet" aria-pressed="false">Labelled set</button><button class="tab" id="tabMine" aria-pressed="false">My cases <span id="mineN"></span></button></div>
+
+  <div class="pane on" id="paneSide">
+    <div class="controls">
+      <label>Example <select id="scenario"></select></label>
+      <button id="runSide">Ask all models</button>
+    </div>
+    <textarea id="state" aria-label="State"></textarea>
+    <div id="msgSide"></div>
+    <div class="cols" id="cols"></div>
+    <div class="agree" id="agree"></div>
+  </div>
+
+  <div class="pane" id="paneSet">
+    <p class="note2">Thirty clear-cut questions written by hand: ten choices, ten scores, ten yes/no. It shows which model gets the easy things right, how sure it is when it is wrong, and how long it takes. It is a smoke test, not a benchmark.</p>
+    <div class="controls"><button id="runSet">Run the labelled set</button><button id="stopSet" class="ghost" disabled>Stop</button><label id="mineBox" style="display:none"><input type="checkbox" id="useMine" checked> Include my <span id="mineCount"></span> cases</label></div>
+    <div class="prog" id="prog" style="display:none"><i id="progBar"></i></div>
+    <div id="msgSet"></div>
+    <div id="results"></div>
+    <details class="items" id="itemsBox" style="display:none"><summary>Every question, model by model</summary><div id="items"></div></details>
+  </div>
+
+  <div class="pane mine" id="paneMine">
+    <p class="note2">Write your own test case: the situation, the question, its options and the correct answer. Cases are saved in this browser. They appear in the example list of the side-by-side view, and, when they have a correct answer, they can be included in the labelled run.</p>
+    <div class="frm">
+      <label class="f">Question type<select id="mKind"><option value="choice">Choice: pick one of several options</option><option value="score">Score: pick a level on an ordered scale</option><option value="noul">Yes / no: is a statement true?</option></select></label>
+      <label class="f">Question<input type="text" id="mQ" placeholder="e.g. Which team should handle this?"></label>
+      <label class="f" style="grid-column:1/-1">State: what the model reads<textarea id="mState" placeholder="e.g. Customer: I was billed twice for March and want my money back."></textarea></label>
+      <label class="f" id="mOptWrap">Options<textarea id="mOpts"></textarea></label>
+      <label class="f">Correct answer<select id="mGold"></select></label>
+    </div>
+    <div class="controls"><button id="mAdd">Add case</button><button id="mExport" class="ghost">Export JSON</button><button id="mImportBtn" class="ghost">Import JSON</button></div>
+    <div class="errs" id="mErr"></div>
+    <div id="mIO" style="display:none"><textarea id="mIOText" style="min-height:120px;font-family:var(--mono);font-size:12px"></textarea><div class="controls"><button id="mIOGo">Import these cases</button><button id="mIOClose" class="ghost">Close</button></div></div>
+    <div id="mList"></div>
+  </div>
+</section>
+</main>
+<script type="module">
+import * as S from './suite.js';
+import * as M from '../common/monitor.js';
+const { esc, pct } = M;
+const $ = s => document.querySelector(s), QP = new URLSearchParams(location.search);
+async function api(path, init) { const r = await fetch(path, init), j = await r.json().catch(() => ({})); if (!r.ok) throw new Error((j.error && j.error.message) || j.detail || r.statusText); return j; }
+const say = (id, t, err) => { const m = $(id); m.textContent = t || ''; m.className = t ? 'on' + (err ? ' err' : '') : ''; };
+
+// ---------- models ----------
+let models = [];
+async function loadModels() {
+  try {
+    const d = await api('/v1/models'); models = d.models.filter(m => m.status === 'ready' || m.status === 'registered');
+    const wanted = (QP.get('models') || '').split(',').filter(Boolean);
+    $('#models').innerHTML = models.map(m => {
+      const hosted = m.backend === 'remote', on = wanted.length ? wanted.includes(m.name) : !hosted;   // hosted models cost money: opt in
+      return `<label class="mchip${on ? ' on' : ''}"><input type="checkbox" value="${esc(m.name)}"${on ? ' checked' : ''}> <b>${esc(m.name)}</b> <small>${hosted ? 'hosted, costs money' : esc(m.backend)}</small></label>`;
+    }).join('') || '<span class="note2">No models loaded. Start the server with --model.</span>';
+  } catch (e) { $('#models').innerHTML = `<span class="note2">Cannot reach the Decida server: ${esc(e.message)}</span>`; }
+}
+$('#models').addEventListener('change', e => { e.target.closest('.mchip').classList.toggle('on', e.target.checked); });
+const chosen = () => [...document.querySelectorAll('#models input:checked')].map(i => i.value);
+const spentOf = async () => { try { return Object.fromEntries((await api('/v1/models')).models.filter(m => m.backend === 'remote').map(m => [m.name, m.spent_usd || 0])); } catch { return {}; } };
+const ask = async (model, request) => { const t0 = performance.now(), json = await api('/v1/systemone', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model, ...request }) }); return { json, ms: performance.now() - t0 }; };
+
+const TABS = [['#tabSide', '#paneSide'], ['#tabSet', '#paneSet'], ['#tabMine', '#paneMine']];
+const showTab = tab => { for (const [t, p] of TABS) { $(t).setAttribute('aria-pressed', t === tab); $(p).classList.toggle('on', t === tab); } };
+for (const [tab] of TABS) $(tab).addEventListener('click', () => showTab(tab));
+
+// ---------- my cases: saved in this browser ----------
+const STORE = 'decida.compare.cases.v1';
+let mine = [];
+function loadMine() { try { const v = JSON.parse(localStorage.getItem(STORE) || '[]'); mine = Array.isArray(v) ? v : []; } catch { mine = []; } }
+function saveMine() { try { localStorage.setItem(STORE, JSON.stringify(mine)); } catch { $('#mErr').textContent = 'This browser will not save cases (private window?). They will be lost when you leave the page.'; } }
+loadMine();
+
+// ---------- side by side ----------
+function fillScenarios(keep) {
+  const built = Object.entries(S.SCENARIOS).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('');
+  const own = mine.map(c => `<option value="mine:${esc(c.id)}">${esc(S.caseToScenario(c).label)}</option>`).join('');
+  $('#scenario').innerHTML = `<optgroup label="Examples">${built}</optgroup>` + (own ? `<optgroup label="My cases">${own}</optgroup>` : '');
+  if (keep && [...$('#scenario').options].some(o => o.value === keep)) $('#scenario').value = keep;
+}
+const currentScenario = () => { const v = $('#scenario').value; if (v.startsWith('mine:')) { const c = mine.find(x => x.id === v.slice(5)); if (c) return S.caseToScenario(c); } return S.SCENARIOS[v] || S.SCENARIOS.billing; };
+const loadScenario = () => { $('#state').value = currentScenario().state; };
+$('#scenario').addEventListener('change', loadScenario); fillScenarios(); loadScenario();
+
+function answerHTML(key, q, a) {
+  let bars = '', top = null, head = '';
+  if (q.type === 'choice') { top = a.choice; bars = Object.entries(a.probabilities).map(([k, p]) => [k, k, p]); head = `<b>${esc(a.choice)}</b>`; }
+  else if (q.type === 'score') { const levels = q.criteria; top = S.topOf(q, a); bars = Object.entries(a.probabilities).map(([k, p]) => [k, `${k} · ${levels[+k] ?? ''}`, p]); head = `level <b>${esc(top)}</b> (expected ${a.score.toFixed(2)})`; }
+  else { top = a.noul >= .5 ? 'yes' : 'no'; bars = [['yes', 'yes', a.noul], ['no', 'no', 1 - a.noul]]; head = `<b>${top}</b> (p true ${a.noul.toFixed(2)})`; }
+  return `<div class="q"><div class="qh"><b>${esc(key)}</b> · ${esc(q.instructions)}<br>${head}</div>${bars.map(([k, label, p]) => `<div class="bar${String(k) === String(top) ? ' top' : ''}"><span class="l" title="${esc(label)}">${esc(label)}</span><span class="t"><i style="width:${Math.max(1, 100 * p)}%"></i></span><span class="p">${Math.round(100 * p)}%</span></div>`).join('')}</div>`;
+}
+
+$('#runSide').addEventListener('click', async () => {
+  const names = chosen(); if (!names.length) { say('#msgSide', 'Pick at least one model.', true); return; } say('#msgSide', '');
+  const sc = currentScenario(), request = { state: $('#state').value, questions: sc.questions };
+  $('#cols').innerHTML = names.map(n => `<div class="col" data-m="${esc(n)}"><h3>${esc(n)}</h3><div class="meta">asking...</div></div>`).join(''); $('#agree').innerHTML = '';
+  const before = await spentOf(), tops = {};
+  for (const n of names) {   // one model at a time: running them together would make them queue behind each other and blur the latencies
+    const col = $(`.col[data-m="${CSS.escape(n)}"]`);
+    try {
+      const { json, ms } = await ask(n, request); tops[n] = Object.fromEntries(Object.entries(sc.questions).map(([k, q]) => [k, S.topOf(q, json.answers[k])]));
+      col.innerHTML = `<h3>${esc(n)}</h3><div class="meta">${Math.round(ms)} ms · ${(json.usage && json.usage.input_tokens) || '?'} input tokens</div>` + Object.entries(sc.questions).map(([k, q]) => answerHTML(k, q, json.answers[k])).join('');
+    } catch (e) { col.innerHTML = `<h3>${esc(n)}</h3><div class="meta bad">failed: ${esc(e.message)}</div>`; }
+  }
+  const ok = names.filter(n => tops[n]);
+  if (ok.length > 1) $('#agree').innerHTML = Object.keys(sc.questions).map(k => { const set = new Set(ok.map(n => tops[n][k])); return `<span class="ag ${set.size === 1 ? 'yes' : 'no'}">${esc(k)}: ${set.size === 1 ? 'all agree' : 'they differ'}</span>`; }).join('');
+  const after = await spentOf(), cost = Object.keys(after).reduce((a, k) => a + (after[k] - (before[k] || 0)), 0);
+  if (cost > 0) say('#msgSide', `Hosted models spent about $${cost.toFixed(5)} on this.`);
+});
+
+// ---------- labelled set ----------
+let stop = false, lastRows = null;
+const scorable = () => mine.filter(c => c.gold !== undefined);
+const runItems = () => ($('#useMine').checked ? [...S.ITEMS, ...scorable()] : S.ITEMS);
+const f1 = v => (v == null ? '-' : v.toFixed(2)), pc = v => (v == null ? '-' : Math.round(100 * v) + '%');
+
+function resultsTable(sums) {
+  const best = key => Math.max(...Object.values(sums).map(s => s[key] ?? -1));
+  const rows = Object.entries(sums).map(([n, s]) => `<tr><td><b>${esc(n)}</b></td><td class="${s.accuracy === best('accuracy') ? 'good' : ''}"><b>${pc(s.accuracy)}</b></td><td>${pc(s.byKind.choice.accuracy)}</td><td>${pc(s.byKind.score.accuracy)} <small>(${pc(s.byKind.score.near)} within 1)</small></td><td>${pc(s.byKind.noul.accuracy)}</td>`
+    + `<td>${f1(s.meanConfidence)}</td><td class="${s.overconfidence > .15 ? 'bad' : ''}">${s.overconfidence == null ? '-' : (s.overconfidence > 0 ? '+' : '') + s.overconfidence.toFixed(2)}</td><td>${f1(s.confidenceWhenWrong)}</td><td>${s.p50 == null ? '-' : Math.round(s.p50)} ms</td><td>${s.p95 == null ? '-' : Math.round(s.p95)} ms</td><td>${s.errors || ''}</td></tr>`).join('');
+  return `<table class="res"><thead><tr><th>Model</th><th>Right</th><th>Choice</th><th>Score</th><th>Yes/no</th><th>Sure (avg)</th><th>More sure than right</th><th>Sure when wrong</th><th>Latency p50</th><th>p95</th><th>Errors</th></tr></thead><tbody>${rows}</tbody></table>
+  <p class="note2">"Sure" is the probability the model gave to the answer it chose. "More sure than right" is average sureness minus accuracy: above zero the model is overconfident. Chance is 33% to 25% on choices, about 20% to 25% on scores and 50% on yes/no.</p>`;
+}
+
+function itemsGrid(names, rowsBy, items) {
+  return `<table class="grid"><thead><tr><th>Question</th><th>Gold</th>${names.map(n => `<th>${esc(n)}</th>`).join('')}</tr></thead><tbody>${items.map(it => {
+    const gold = it.kind === 'score' ? `${it.gold} · ${it.criteria[it.gold]}` : String(it.gold);
+    return `<tr><td title="${esc(it.state)}">${esc(it.id)}: ${esc(it.state.slice(0, 60))}${it.state.length > 60 ? '...' : ''}</td><td>${esc(gold)}</td>${names.map(n => { const r = rowsBy[n].find(x => x.item.id === it.id);
+      if (!r) return '<td></td>'; if (r.error) return '<td class="cell no">error</td>';
+      return `<td class="cell ${r.result.correct ? 'ok' : 'no'}">${r.result.correct ? '&#10003;' : '&#10007;'} ${esc(String(r.result.predicted))} <small>${Math.round(100 * (r.result.confidence ?? 0))}%</small></td>`; }).join('')}</tr>`; }).join('')}</tbody></table>`;
+}
+
+$('#stopSet').addEventListener('click', () => { stop = true; });
+$('#runSet').addEventListener('click', async () => {
+  const names = chosen(); if (!names.length) { say('#msgSet', 'Pick at least one model.', true); return; } say('#msgSet', ''); stop = false;
+  $('#runSet').disabled = true; $('#stopSet').disabled = false; $('#prog').style.display = 'block'; $('#results').innerHTML = ''; $('#itemsBox').style.display = 'none';
+  const items = runItems(), rowsBy = Object.fromEntries(names.map(n => [n, []])), total = names.length * items.length; let done = 0;
+  const before = await spentOf();
+  for (const n of names) {   // one model at a time, one question at a time, so the latencies are not blurred by the models queueing behind each other
+    for (const item of items) {
+      if (stop) break;
+      try { const { json, ms } = await ask(n, S.toRequest(item)); rowsBy[n].push({ item, result: S.judge(item, json.answers.q), ms, tokens: (json.usage && json.usage.input_tokens) || 0 }); }
+      catch (e) { rowsBy[n].push({ item, error: e.message }); }
+      $('#progBar').style.width = (100 * ++done / total) + '%';
+    }
+  }
+  const sums = Object.fromEntries(names.map(n => [n, S.summarize(rowsBy[n])]));
+  $('#results').innerHTML = resultsTable(sums) + (names.length > 1 ? `<div class="agree">${names.flatMap((a, i) => names.slice(i + 1).map(b => `<span class="ag">${esc(a)} and ${esc(b)} gave the same answer on ${pc(S.agreement(rowsBy[a], rowsBy[b]))}</span>`)).join('')}</div>` : '');
+  $('#items').innerHTML = itemsGrid(names, rowsBy, items); $('#itemsBox').style.display = 'block'; lastRows = rowsBy;
+  const after = await spentOf(), cost = Object.keys(after).reduce((a, k) => a + (after[k] - (before[k] || 0)), 0);
+  say('#msgSet', (stop ? 'Stopped early. ' : '') + (cost > 0 ? `Hosted models spent about $${cost.toFixed(5)}.` : ''));
+  $('#runSet').disabled = false; $('#stopSet').disabled = true; $('#prog').style.display = 'none';
+});
+
+// ---------- the My cases form ----------
+const kindLabel = { choice: 'choice', score: 'score', noul: 'yes/no' };
+function refreshForm() {
+  const kind = $('#mKind').value;
+  $('#mOptWrap').style.display = kind === 'noul' ? 'none' : 'block';
+  $('#mOpts').placeholder = kind === 'choice' ? 'One option per line, as  name: description\nbilling: Charges, invoices, refunds\ntechnical: Bugs and outages\nsales: Pricing and new seats' : 'One level per line, lowest first\nNot urgent\nSomewhat urgent\nUrgent\nCritical';
+  const { criteria } = S.parseOptions(kind, $('#mOpts').value), keep = $('#mGold').value;
+  const opts = ['<option value="">(no correct answer: side by side only)</option>'];
+  if (kind === 'choice') for (const k of Object.keys(criteria || {})) opts.push(`<option value="${esc(k)}">${esc(k)}</option>`);
+  else if (kind === 'score') (criteria || []).forEach((l, i) => opts.push(`<option value="${i}">${i} \u00b7 ${esc(l)}</option>`));
+  else opts.push('<option value="true">yes (true)</option>', '<option value="false">no (false)</option>');
+  $('#mGold').innerHTML = opts.join(''); if ([...$('#mGold').options].some(o => o.value === keep)) $('#mGold').value = keep;
+}
+for (const id of ['#mKind', '#mOpts']) $(id).addEventListener('input', refreshForm);
+function goldText(c) { if (c.gold === undefined) return 'no correct answer'; if (c.kind === 'score') return `${c.gold} \u00b7 ${c.criteria[c.gold]}`; if (c.kind === 'noul') return c.gold ? 'yes' : 'no'; return c.gold; }
+function renderMine() {
+  $('#mineN').textContent = mine.length ? `(${mine.length})` : '';
+  const n = scorable().length; $('#mineBox').style.display = n ? 'inline-flex' : 'none'; $('#mineCount').textContent = n;
+  $('#mList').innerHTML = mine.length ? mine.map(c => `<div class="case" data-id="${esc(c.id)}"><div class="body"><div class="q"><span class="badge2">${kindLabel[c.kind]}</span>${esc(c.instructions)}</div><div class="st" title="${esc(c.state)}">${esc(c.state)}</div><div class="meta">correct: ${esc(goldText(c))}</div></div><button data-act="ask">Ask models</button><button class="ghost" data-act="del">Delete</button></div>`).join('') : '<p class="note2">No cases yet. Add one above.</p>';
+  const cur = $('#scenario').value; fillScenarios(cur); if (cur.startsWith('mine:') && !$('#scenario').value.startsWith('mine:')) loadScenario();
+}
+$('#mAdd').addEventListener('click', () => {
+  const r = S.makeCase({ kind: $('#mKind').value, state: $('#mState').value, instructions: $('#mQ').value, options: $('#mOpts').value, gold: $('#mGold').value });
+  if (r.errors) { $('#mErr').innerHTML = r.errors.map(esc).join('<br>'); return; }
+  $('#mErr').textContent = ''; mine.push(r); saveMine(); renderMine();
+  $('#mState').value = ''; $('#mQ').value = ''; $('#mOpts').value = ''; refreshForm();
+});
+$('#mList').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return; const id = b.closest('.case').dataset.id;
+  if (b.dataset.act === 'del') { mine = mine.filter(c => c.id !== id); saveMine(); renderMine(); }
+  else { showTab('#tabSide'); $('#scenario').value = 'mine:' + id; loadScenario(); window.scrollTo(0, 0); $('#runSide').click(); }
+});
+$('#mExport').addEventListener('click', () => { $('#mIO').style.display = 'block'; $('#mIOText').value = S.exportCases(mine); $('#mIOText').select(); });
+$('#mImportBtn').addEventListener('click', () => { $('#mIO').style.display = 'block'; $('#mIOText').value = ''; $('#mIOText').placeholder = 'Paste exported cases here'; $('#mIOText').focus(); });
+$('#mIOClose').addEventListener('click', () => { $('#mIO').style.display = 'none'; });
+$('#mIOGo').addEventListener('click', () => {
+  const r = S.importCases($('#mIOText').value, mine.map(c => c.id)); mine.push(...r.cases); saveMine(); renderMine();
+  $('#mErr').innerHTML = (r.cases.length ? `<span style="color:var(--green)">Imported ${r.cases.length} case${r.cases.length === 1 ? '' : 's'}.</span><br>` : '') + r.errors.map(esc).join('<br>'); if (r.cases.length) $('#mIO').style.display = 'none';
+});
+refreshForm(); renderMine();
+window.__compare = { S, get rows() { return lastRows; } };
+loadModels().then(() => { if (QP.get('auto') === 'set') { $('#tabSet').click(); $('#runSet').click(); } if (QP.get('auto') === 'side') $('#runSide').click(); });
+</script>
+</body>
+</html>

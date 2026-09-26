@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decida bench: Candies sorter</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2024%2024%22%3E%3Crect%20x=%221%22%20y=%2216%22%20width=%224%22%20height=%225%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%227%22%20y=%223%22%20width=%224%22%20height=%2218%22%20rx=%221%22%20fill=%22%233a34d2%22/%3E%3Crect%20x=%2213%22%20y=%2213%22%20width=%224%22%20height=%228%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%2219%22%20y=%2218%22%20width=%224%22%20height=%223%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../common/bench.css">
+<!-- The idea comes from Matthew Berman's video "We need to talk about Jev..." (https://www.youtube.com/watch?v=2z-7pIj57f8); monitor layout adapted from Agent-JEV-Tetris (see THIRD_PARTY.md) -->
+<style>
+main{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)}
+#cv{width:100%;height:auto;display:block;background:var(--surface);border-radius:12px}
+.controls input[type=number]{width:74px}
+table.cm{border-collapse:collapse;font:12px var(--mono);margin-top:6px}
+table.cm th{color:var(--ink3);font-weight:500;padding:3px 8px;text-align:right}
+table.cm td{padding:3px 8px;text-align:right;border:1px solid var(--line);min-width:44px}
+table.cm td.diag{font-weight:600}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:baseline}
+.credit{font-size:12px;color:var(--ink3,#7a8699);margin:10px 0 0}.credit a{color:inherit;text-decoration:underline}
+</style>
+</head>
+<body>
+<header><a href="/">&larr; Decida</a><h1>Candies sorter</h1><span style="color:var(--ink3);font-size:13px">every candy is one small question; the model says which bowl it belongs in</span></header>
+<main class="wide">
+<section class="panel">
+  <div class="stage" id="stage"><canvas id="cv" width="900" height="560" aria-label="Sorting scene"></canvas></div>
+  <div class="controls">
+    <label>Model <select id="model"></select></label>
+    <label title="How the candy's colour is described">Reading <select id="hints"><option value="rgb" selected>RGB numbers</option><option value="name">colour in words</option><option value="guide">RGB + hue + guide</option></select></label>
+    <label title="How much the hues of neighbouring colours overlap">Difficulty <select id="difficulty"><option value="easy">easy</option><option value="normal" selected>normal</option><option value="hard">hard</option></select></label>
+    <label>Candies <select id="balls"><option>200</option><option selected>600</option><option>2000</option><option>5000</option><option>20000</option></select></label>
+    <label title="Candies per request (the API takes up to 256 questions)">Batch <select id="batch"><option>16</option><option selected>64</option><option>256</option></select></label>
+    <label title="Which grabs the chopsticks animate; the others are placed instantly as answers arrive">Animate <select id="animate"><option value="1">every candy</option><option value="10" selected>every 10th</option><option value="0">none</option></select></label>
+    <label title="A number replays that exact pile; random picks a new one every run">Pile <input type="text" id="seed" value="random" size="8"></label>
+    <button id="go">Start</button>
+    <button id="new" class="ghost">New pile</button>
+    <button id="fs" class="ghost fsbtn" type="button" title="Show the stage full screen (Esc to leave)">Full screen</button>
+  </div>
+  <div id="msg"></div>
+  <div id="report"></div>
+  <h2>Where the candies went</h2>
+  <div id="cm"></div>
+  <p class="note">Rows are the true colour, columns the bowl the model chose. A wrong bowl shows up as a wrong-coloured candy in the bowl. The reference rule is "nearest hue" (99.9% easy, about 99% normal, 95% hard). Numbers are hard for small models: try "colour in words" for them, and RGB for a large model.</p>
+  <p class="credit">Idea: Matthew Berman's video <a href="https://www.youtube.com/watch?v=2z-7pIj57f8" target="_blank" rel="noopener">"We need to talk about Jev..."</a>. The design and code are our own.</p>
+</section>
+<section class="panel" id="side"></section>
+</main>
+<script type="module">
+import * as G from './game.js';
+import { pickSeed, rng } from '../common/rng.js';
+import * as M from '../common/monitor.js';
+const { css, esc, pct, stat } = M;
+const $ = s => document.querySelector(s);
+const QP = new URLSearchParams(location.search);
+$('#side').innerHTML = M.panelHTML();
+const W = 900, H = 560, DPR = Math.min(2, window.devicePixelRatio || 1);
+const cv = $('#cv'), ctx = cv.getContext('2d');
+let K = DPR; // backing pixels per drawing unit: follows the displayed size, so a bigger stage is a sharper one
+cv.width = Math.round(W * K); cv.height = Math.round(H * K); // drawing code works in 900x560 units
+const COLOR = { red: '#e0334f', orange: '#f28c28', yellow: '#f2d32b', green: '#2fb45a', purple: '#7b3fb8' };
+const PILE_DOTS = 3500, CANDY_W = 16, CANDY_H = 12;
+const BOWL_X = [95, 272, 450, 628, 805], BOWL_Y = 446, BOWL_RX = 70, BOWL_RY = 30, BOWL_DOTS = 260;
+const IDLE = { x: 450, y: 330 }, BASE_L = { x: 20, y: 545 }, BASE_R = { x: 880, y: 520 };
+const say = (t, err) => { const m = $('#msg'); m.textContent = t || ''; m.className = t ? 'on' + (err ? ' err' : '') : ''; };
+let S = null, backends = {};
+
+async function loadModels() {
+  try {
+    const d = await (await fetch('/v1/models')).json();
+    backends = Object.fromEntries(d.models.map(m => [m.name, m.backend]));
+    const ready = d.models.filter(m => m.status === 'ready' || m.status === 'registered');
+    $('#model').innerHTML = ready.map(m => `<option value="${esc(m.name)}">${esc(m.name)} (${m.backend})</option>`).join('');
+    const want = QP.get('model') || d.default;
+    if (ready.some(m => m.name === want)) $('#model').value = want;
+    if (!ready.length) say('No models loaded. Start the server with --model.', true);
+  } catch (e) { say('Cannot reach the Decida server: ' + e.message, true); }
+}
+
+function newRun() {
+  const seed = pickSeed($('#seed').value), n = +$('#balls').value, difficulty = $('#difficulty').value, r = rng(seed ^ 0x9e3779b9);
+  const balls = G.makeBalls(seed, n, difficulty);
+  // Visual pile: fixed slots in an ellipse, coloured like the real pile; a sorted candy removes a matching slot.
+  const pile = { cx: 450, cy: 168 }; pile.rx = Math.min(350, Math.sqrt(n * 175) + 24); pile.ry = pile.rx / 2.9; // a small pile is a tight mound, not a sparse scatter
+  const slots = [], byColor = Object.fromEntries(G.BUCKETS.map(c => [c, []])), k = Math.min(n, PILE_DOTS);
+  const remaining = Object.fromEntries(G.BUCKETS.map(c => [c, 0]));
+  for (const b of balls) remaining[b.color]++;
+  for (let i = 0; i < k; i++) {
+    const a = r() * 2 * Math.PI, d = Math.sqrt(r()), color = balls[Math.floor(i * n / k)].color;
+    slots.push({ x: pile.cx + Math.cos(a) * d * (pile.rx - 10), y: pile.cy + Math.sin(a) * d * (pile.ry - 10), color, gone: false, v: i % 3 });
+    byColor[color].push(i);
+  }
+  slots.sort((p, q) => p.y - q.y);
+  const idx = Object.fromEntries(G.BUCKETS.map(c => [c, []])); slots.forEach((s, i) => idx[s.color].push(i));
+  return { pile, trails: [], fx: [], seed, balls, n, hints: $('#hints').value, difficulty, batch: +$('#batch').value, animateEvery: +$('#animate').value, model: $('#model').value,
+    next: 0, inflight: 0, ready: [], slots, slotIdx: idx, remaining, r,
+    cm: G.confusion([]), sorted: 0, agree: 0, classified: 0, lat: [], tokens: 0, spent: null, counts: {}, cutTurns: 0, cutOptions: 0, stateCut: false, errors: 0,
+    rate: [], finishedAt: 0, received: 0, tFirst: 0, tLast: 0, last: null, running: false, paused: false, finished: false, t0: 0, grab: null, tips: { x: IDLE.x, y: IDLE.y, gap: 16 }, animCount: 0 };
+}
+
+// What the monitor shows: the candy being handled, with its own question and answer (not the whole batch).
+function showItem(item) {
+  const id = 'b' + item.ball.id;
+  S.last = { probs: item.probs, choice: item.pred, confidence: item.conf, ms: item.ms, msLabel: `(batch of ${item.size})`, subject: `candy #${item.ball.id}`, oracle: G.oracle(item.ball),
+    request: { state: item.req.state, questions: { [id]: item.req.questions[id] } },
+    raw: { model: item.raw.model, answers: { [id]: item.raw.answers[id] }, usage: item.raw.usage, latency_ms: item.raw.latency_ms, '…': `answer to 1 of ${item.size} candies in this batch` } };
+}
+
+
+async function sendBatch(balls) {
+  const req = G.toRequest(balls, S.hints), t0 = performance.now();
+  if (!S.tFirst) S.tFirst = t0;
+  S.inflight++;
+  try {
+    const r = await fetch('/v1/systemone', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: S.model, ...req }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error((j.error && j.error.message) || r.statusText);
+    const ms = performance.now() - t0;
+    S.tLast = performance.now(); S.received += balls.length;
+    S.lat.push(ms); S.tokens += (j.usage && j.usage.input_tokens) || 0;
+    if (j.x_decida && j.x_decida.spent_usd != null) S.spent = j.x_decida.spent_usd;
+    const cut = j.x_decida && j.x_decida.truncation;
+    if (cut && (cut.options_cut || cut.state_cut)) { S.cutTurns++; S.cutOptions = Math.max(S.cutOptions, cut.options_cut); S.stateCut = S.stateCut || cut.state_cut; }
+    for (const b of balls) { const a = j.answers['b' + b.id]; S.ready.push({ ball: b, pred: a.choice, probs: a.probabilities, conf: a.confidence, ms, req, raw: j, size: balls.length }); }
+  } catch (e) { S.errors++; say('Request failed: ' + e.message, true); if (S.errors >= 3) finish('errors'); }
+  finally { S.inflight--; }
+}
+
+function pump() { // keep two requests in flight until every candy has been sent
+  while (S.running && !S.paused && !S.finished && S.inflight < 2 && S.next < S.n && S.errors < 3) {
+    const chunk = S.balls.slice(S.next, S.next + S.batch); S.next += chunk.length;
+    sendBatch(chunk);
+  }
+}
+
+function land(item, fx = false) { // a candy arrives in its bowl
+  const { ball, pred } = item;
+  showItem(item);
+  const sec = Math.floor((performance.now() - S.t0) / 1000); while (S.rate.length <= sec) S.rate.push(0); S.rate[sec]++; // candies landing per second
+  if (fx) { const d = bowlTop(pred); S.fx.push({ x: d.x, y: d.y + 6, color: ball.color, born: performance.now() }); }
+  S.cm[ball.color][pred]++; S.sorted++; S.classified++;
+  S.counts[pred] = (S.counts[pred] || 0) + 1;
+  if (pred === G.oracle(ball)) S.agree++;
+  if (S.sorted === S.n) finish('done');
+}
+
+function removeSlot(color) { // take one candy of this colour out of the visual pile (thinned when the pile is bigger than the drawn slots)
+  const list = S.slotIdx[color], left = list.length, rem = S.remaining[color]--;
+  if (!left) return -1;
+  if (left >= rem || S.r() < left / rem) { const j = Math.floor(S.r() * left), i = list[j]; list[j] = list[left - 1]; list.pop(); S.slots[i].gone = true; return i; }
+  return -1;
+}
+
+const ease = t => t * t * (3 - 2 * t);
+const lerp = (a, b, t) => a + (b - a) * t;
+const bowlTop = b => ({ x: BOWL_X[G.BUCKETS.indexOf(b)], y: BOWL_Y - 6 });
+
+function step(dt) {
+  if (!S || !S.running || S.paused || S.finished) return;
+  const g = S.grab;
+  if (g) { // chopsticks working on one candy
+    g.t += dt / g.dur;
+    const t = Math.min(1, g.t), tips = S.tips;
+    if (t < .28) { const u = ease(t / .28); tips.x = lerp(g.from.x, g.slot.x, u); tips.y = lerp(g.from.y, g.slot.y, u); tips.gap = 16; }
+    else if (t < .38) { tips.x = g.slot.x; tips.y = g.slot.y; tips.gap = lerp(16, 2, (t - .28) / .10); if (!g.picked) { g.picked = true; if (g.si >= 0) S.slots[g.si].gone = true; } }
+    else if (t < .86) {
+      const u = ease((t - .38) / .48), cx = (g.slot.x + g.dest.x) / 2, cy = Math.min(g.slot.y, g.dest.y) - 70;
+      tips.x = (1 - u) * (1 - u) * g.slot.x + 2 * (1 - u) * u * cx + u * u * g.dest.x; tips.y = (1 - u) * (1 - u) * g.slot.y + 2 * (1 - u) * u * cy + u * u * g.dest.y; tips.gap = 2;
+    } else { tips.x = g.dest.x; tips.y = g.dest.y; tips.gap = lerp(2, 16, Math.min(1, (t - .86) / .10)); if (!g.landed) { g.landed = true; land(g.item, true); } }
+    if (t >= 1) { S.grab = null; }
+    return;
+  }
+  // No grab in progress: drain the queue. Un-animated candies drop in at once; an animated one starts a grab.
+  let guard = 4000;
+  while (S.ready.length && guard--) {
+    const item = S.ready.shift();
+    const si = removeSlot(item.ball.color);
+    S.animCount++;
+    const animate = S.animateEvery > 0 && S.animCount % S.animateEvery === 0 && si >= 0;
+    if (!animate) { land(item); continue; }
+    if (si >= 0) S.slots[si].gone = false; // stays visible until the chopsticks pick it
+    showItem(item);
+    S.grab = { t: 0, dur: 320, from: { x: S.tips.x, y: S.tips.y }, slot: { x: S.slots[si].x, y: S.slots[si].y }, dest: bowlTop(item.pred), item, si, color: item.ball.color };
+    const gr = S.grab, cx = (gr.slot.x + gr.dest.x) / 2, cy = Math.min(gr.slot.y, gr.dest.y) - 70, pts = [];
+    for (let q = 0; q <= 24; q++) { const u = q / 24; pts.push([(1 - u) * (1 - u) * gr.slot.x + 2 * (1 - u) * u * cx + u * u * gr.dest.x, (1 - u) * (1 - u) * gr.slot.y + 2 * (1 - u) * u * cy + u * u * gr.dest.y]); }
+    S.trails.push({ pts, color: item.ball.color, born: performance.now() }); if (S.trails.length > 14) S.trails.shift();
+    break;
+  }
+}
+
+function finish(why) {
+  if (!S || S.finished) return;
+  S.finished = true; S.running = false; S.finishedAt = performance.now(); $('#go').textContent = 'Start';
+  const secs = (performance.now() - S.t0) / 1000, p50 = pct(S.lat, .5), p95 = pct(S.lat, .95), purity = G.purity(S.cm);
+  const r = $('#report'); r.className = 'on';
+  r.innerHTML = `<b>${why === 'errors' ? 'Stopped: request errors' : why === 'stopped' ? 'Stopped' : `${S.sorted} candies sorted, purity ${(100 * purity).toFixed(1)}%`}</b><br>
+    model <b>${esc(S.model)}</b> · reading ${S.hints} · difficulty ${S.difficulty} · pile ${S.seed} · batch ${S.batch}<br>
+    model throughput ${S.tLast > S.tFirst ? Math.round(1000 * S.received / (S.tLast - S.tFirst)) : 0} candies/s (first request to last answer) · whole run ${secs.toFixed(1)} s including animation · agreement with the nearest-hue rule ${S.sorted ? Math.round(100 * S.agree / S.sorted) : 0}% · ${S.lat.length} requests, p50 ${p50 == null ? 'n/a' : Math.round(p50)} ms, p95 ${p95 == null ? 'n/a' : Math.round(p95)} ms<br>
+    ${S.tokens.toLocaleString()} input tokens (${S.classified ? Math.round(S.tokens / S.classified) : 0} per candy)${S.spent != null ? ` · estimated cost $${S.spent.toFixed(4)}` : ''}<br>
+    ${S.cutTurns ? `<b style="color:var(--amber)">Warning: the token budget cut text on ${S.cutTurns} requests.</b><br>` : ''}`;
+  renderCM();
+}
+
+// ---------- drawing ----------
+const ell = (x, y, rx, ry) => { ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, 7); };
+const mix = (hex, to, f) => { const n = parseInt(hex.slice(1), 16), t = to === 'w' ? 255 : 0; return '#' + [16, 8, 0].map(sh => Math.round(((n >> sh) & 255) * (1 - f) + t * f).toString(16).padStart(2, '0')).join(''); };
+const isDark = () => { const c = css('--surface'); if (!/^#/.test(c)) return false; const n = parseInt(c.slice(1, 7), 16); return (((n >> 16) & 255) * .3 + ((n >> 8) & 255) * .59 + (n & 255) * .11) < 110; };
+
+// Candies are drawn once into small glossy sprites (3 spins per colour), then stamped thousands of times per frame.
+const SPR = {}, SW = CANDY_W + 4, SH = CANDY_H + 4;
+function buildSprites() {
+ for (const c of G.BUCKETS) {
+  SPR[c] = [-0.6, 0.05, 0.7].map(ang => {
+    const k = document.createElement('canvas'); k.width = Math.ceil(SW * K * 2); k.height = Math.ceil(SH * K * 2);
+    const g = k.getContext('2d'); g.scale(K * 2, K * 2); g.translate(SW / 2, SH / 2); g.rotate(ang);
+    const grad = g.createRadialGradient(-CANDY_W * .16, -CANDY_H * .28, 1, 0, 0, CANDY_W * .62);
+    grad.addColorStop(0, mix(COLOR[c], 'w', .55)); grad.addColorStop(.5, COLOR[c]); grad.addColorStop(1, mix(COLOR[c], 'b', .38));
+    g.fillStyle = grad; g.beginPath(); g.ellipse(0, 0, CANDY_W / 2, CANDY_H / 2, 0, 0, 7); g.fill();
+    g.strokeStyle = 'rgba(0,0,0,.22)'; g.lineWidth = .6; g.stroke();
+    g.fillStyle = 'rgba(255,255,255,.8)'; g.beginPath(); g.ellipse(-CANDY_W * .17, -CANDY_H * .24, CANDY_W * .15, CANDY_H * .1, -.35, 0, 7); g.fill();
+    return k;
+  });
+ }
+}
+buildSprites();
+function fit() { // re-render at the displayed size (and pixel ratio) when it changes noticeably
+  const want = Math.max(1, (cv.clientWidth || W) * DPR / W);
+  if (Math.abs(want - K) / K < 0.06) return;
+  K = want; cv.width = Math.round(W * K); cv.height = Math.round(H * K); buildSprites();
+}
+if (window.ResizeObserver) new ResizeObserver(fit).observe(cv);
+function candy(color, x, y, scale = 1, v = 0) { ctx.drawImage(SPR[color][v % 3], x - SW * scale / 2, y - SH * scale / 2, SW * scale, SH * scale); }
+
+function drawTable() {
+  const dark = isDark();
+  ctx.fillStyle = css('--surface'); ctx.fillRect(0, 0, W, H);
+  const g = ctx.createRadialGradient(W / 2, 230, 30, W / 2, 230, 560);
+  g.addColorStop(0, dark ? 'rgba(255,255,255,.06)' : 'rgba(255,255,255,.75)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+
+function drawPile(now) {
+  const p = S ? S.pile : { cx: 450, cy: 168, rx: 300, ry: 103 };
+  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.22)'; ctx.shadowBlur = 34; ctx.shadowOffsetY = 16; ctx.fillStyle = isDark() ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.05)'; ell(p.cx, p.cy + 4, p.rx + 6, p.ry + 4); ctx.fill(); ctx.restore();
+  if (!S) return;
+  const top = p.cy - p.ry, span = 2 * p.ry, size = Math.min(1.35, 1.25 - S.n / 5000 + .1);
+  for (const s of S.slots) if (!s.gone) candy(s.color, s.x, s.y, size * (.88 + .3 * (s.y - top) / span), s.v); // nearer (lower) candies a touch bigger
+}
+
+function drawBowl(i) {
+  const name = G.BUCKETS[i], x = BOWL_X[i], y = BOWL_Y, rx = BOWL_RX, ry = BOWL_RY, dark = isDark();
+  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.30)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 12; ctx.fillStyle = '#e4dfd3'; ell(x, y + 6, rx + 12, ry + 9); ctx.fill(); ctx.restore();
+  const rim = ctx.createLinearGradient(x - rx, y - ry, x + rx, y + ry); rim.addColorStop(0, '#ffffff'); rim.addColorStop(1, '#d6d0c3');
+  ctx.fillStyle = rim; ell(x, y, rx + 12, ry + 9); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,.10)'; ctx.lineWidth = 1; ctx.stroke();
+  const dish = ctx.createLinearGradient(x, y - ry, x, y + ry); dish.addColorStop(0, '#bdb6a6'); dish.addColorStop(1, '#ebe6da');
+  ctx.fillStyle = dish; ell(x, y + 1, rx, ry); ctx.fill();
+  const counts = G.BUCKETS.map(t => (S ? S.cm[t][name] : 0)), total = counts.reduce((a, b) => a + b, 0), dots = Math.min(total, BOWL_DOTS);
+  if (dots) { // a mound that grows with the fill; the mix of true colours is stratified so it stays stable while filling
+    const f = Math.min(1, total / BOWL_DOTS), cum = []; let acc = 0; for (const c of counts) { acc += c; cum.push(acc / total); }
+    const pts = [];
+    for (let k = 0; k < dots; k++) {
+      const u = (k + .5) / dots, ci = cum.findIndex(c => u <= c + 1e-9), a = k * 2.399963, d = Math.sqrt((k + .5) / dots), spread = .42 + .58 * f;
+      pts.push({ x: x + Math.cos(a) * d * (rx - 12) * spread, y: y + Math.sin(a) * d * (ry - 8) * spread - (1 - d * d) * 20 * f, col: G.BUCKETS[ci < 0 ? 0 : ci], v: k });
+    }
+    pts.sort((p, q) => p.y - q.y);
+    for (const q of pts) candy(q.col, q.x, q.y, .82, q.v);
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(x, y, rx + 12, ry + 9, 0, .12 * Math.PI, .88 * Math.PI); ctx.stroke(); // front lip catches the light
+  ctx.strokeStyle = COLOR[name]; ctx.globalAlpha = .55; ctx.lineWidth = 2.2; ctx.beginPath(); ctx.ellipse(x, y + 6, rx + 22, ry + 17, 0, .18 * Math.PI, .82 * Math.PI); ctx.stroke(); ctx.globalAlpha = 1; // the bowl's colour ring
+  ctx.fillStyle = css('--ink3'); ctx.font = '600 15px ui-monospace,monospace'; ctx.textAlign = 'center'; ctx.fillText(`0${i + 1}`, x - 18, y + ry + 50);
+  ctx.fillStyle = css('--ink'); ctx.font = '700 15px ui-monospace,monospace'; ctx.fillText(total ? String(total) : '', x + 20, y + ry + 50);
+}
+
+function drawStick(base, tip) {
+  const dx = tip.x - base.x, dy = tip.y - base.y, len = Math.hypot(dx, dy), ux = dx / len, uy = dy / len, nx = -uy, ny = ux, w0 = 8, w1 = 2.6;
+  const poly = (ox, oy) => { ctx.beginPath(); ctx.moveTo(base.x + nx * w0 / 2 + ox, base.y + ny * w0 / 2 + oy); ctx.lineTo(tip.x + nx * w1 / 2 + ox, tip.y + ny * w1 / 2 + oy); ctx.lineTo(tip.x - nx * w1 / 2 + ox, tip.y - ny * w1 / 2 + oy); ctx.lineTo(base.x - nx * w0 / 2 + ox, base.y - ny * w0 / 2 + oy); ctx.closePath(); };
+  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.25)'; ctx.shadowBlur = 8; poly(9, 15); ctx.fillStyle = 'rgba(0,0,0,.14)'; ctx.fill(); ctx.restore(); // soft shadow on the table
+  const wood = ctx.createLinearGradient(base.x + nx * w0 / 2, base.y + ny * w0 / 2, base.x - nx * w0 / 2, base.y - ny * w0 / 2);
+  wood.addColorStop(0, '#c48a4c'); wood.addColorStop(.45, '#9a6432'); wood.addColorStop(1, '#6b3f1c');
+  poly(0, 0); ctx.fillStyle = wood; ctx.fill();
+  ctx.strokeStyle = 'rgba(255,225,180,.55)'; ctx.lineWidth = .9; ctx.beginPath(); ctx.moveTo(base.x + nx * w0 * .22, base.y + ny * w0 * .22); ctx.lineTo(tip.x + nx * w1 * .22, tip.y + ny * w1 * .22); ctx.stroke(); // grain highlight
+  for (const f of [.06, .10]) { const px = base.x + dx * f, py = base.y + dy * f; ctx.strokeStyle = 'rgba(40,20,5,.55)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(px + nx * (w0 * (1 - f) + w1 * f) / 2, py + ny * (w0 * (1 - f) + w1 * f) / 2); ctx.lineTo(px - nx * (w0 * (1 - f) + w1 * f) / 2, py - ny * (w0 * (1 - f) + w1 * f) / 2); ctx.stroke(); } // bands near the handle end
+}
+
+function draw(now) {
+  ctx.setTransform(cv.width / W, 0, 0, cv.width / W, 0, 0);
+  drawTable(); drawPile(now);
+  if (S) { // fading trails of recent grabs
+    S.trails = S.trails.filter(t => now - t.born < 1500);
+    for (const t of S.trails) { ctx.globalAlpha = .5 * (1 - (now - t.born) / 1500); ctx.strokeStyle = COLOR[t.color]; ctx.lineWidth = 1.8; ctx.beginPath(); t.pts.forEach(([px, py], k) => (k ? ctx.lineTo(px, py) : ctx.moveTo(px, py))); ctx.stroke(); }
+    ctx.globalAlpha = 1;
+  }
+  for (let i = 0; i < 5; i++) drawBowl(i);
+  if (S) { // landing ripples
+    S.fx = S.fx.filter(f => now - f.born < 500);
+    for (const f of S.fx) { const u = (now - f.born) / 500; ctx.globalAlpha = .7 * (1 - u); ctx.strokeStyle = COLOR[f.color]; ctx.lineWidth = 2; ell(f.x, f.y, 8 + u * 30, 3 + u * 11); ctx.stroke(); }
+    ctx.globalAlpha = 1;
+  }
+  const t = S ? S.tips : { x: IDLE.x, y: IDLE.y, gap: 16 }, half = t.gap / 2, carrying = S && S.grab && S.grab.t >= .28 && S.grab.t < .9;
+  if (carrying) { const lift = Math.sin(Math.PI * Math.min(1, (S.grab.t - .38) / .48)) * 16; ctx.fillStyle = 'rgba(0,0,0,.22)'; ell(t.x + 4, t.y + 9 + lift * .5, 9, 3.4); ctx.fill(); candy(S.grab.color, t.x, t.y - lift * .35, 1.3, 1); }
+  drawStick(BASE_L, { x: t.x - half, y: t.y }); drawStick(BASE_R, { x: t.x + half, y: t.y });
+  ctx.textAlign = 'left'; ctx.fillStyle = css('--ink3'); ctx.font = '700 15px ui-sans-serif,system-ui'; if ('letterSpacing' in ctx) ctx.letterSpacing = '3px';
+  ctx.fillText(S && S.sorted ? 'SORTING' : 'MIXED IN', 22, 32);
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+  ctx.font = '15px ui-sans-serif,system-ui'; ctx.fillText(S ? `${S.n.toLocaleString()} candies · ${(S.n - S.sorted).toLocaleString()} left in the pile` : '', 22, 54);
+  ctx.textAlign = 'right'; ctx.font = '600 12px ui-sans-serif,system-ui'; if ('letterSpacing' in ctx) ctx.letterSpacing = '2px'; ctx.fillText('A PLACE FOR EVERY COLOR', W - 22, H - 16); if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+}
+
+function renderCM() {
+  const m = S ? S.cm : G.confusion([]);
+  const head = `<tr><th></th>${G.BUCKETS.map(p => `<th><span class="dot" style="background:${COLOR[p]}"></span>${p}</th>`).join('')}</tr>`;
+  const rows = G.BUCKETS.map(t => {
+    const rowTotal = G.BUCKETS.reduce((a, p) => a + m[t][p], 0);
+    return `<tr><th><span class="dot" style="background:${COLOR[t]}"></span>${t}</th>${G.BUCKETS.map(p => {
+      const v = m[t][p], f = rowTotal ? v / rowTotal : 0, diag = t === p;
+      const bg = diag ? `color-mix(in srgb, var(--green) ${Math.round(f * 45)}%, transparent)` : v ? `color-mix(in srgb, var(--red) ${Math.min(70, 25 + Math.round(f * 300))}%, transparent)` : 'transparent';
+      return `<td class="${diag ? 'diag' : ''}" style="background:${bg}">${v || ''}</td>`;
+    }).join('')}</tr>`;
+  }).join('');
+  $('#cm').innerHTML = `<table class="cm">${head}${rows}</table>`;
+}
+
+function render() {
+  const p50 = pct(S.lat, .5), p95 = pct(S.lat, .95), secs = S.t0 ? Math.max(.001, (performance.now() - S.t0) / 1000) : 0;
+  $('#stats').innerHTML = [stat('Sorted', `${S.sorted}/${S.n}`), stat('Purity', S.sorted ? (100 * G.purity(S.cm)).toFixed(1) + '%' : '–'),
+    stat('Agrees with rule', S.sorted ? Math.round(100 * S.agree / S.sorted) + '%' : '–'), stat('Model throughput', S.received && S.tLast > S.tFirst ? Math.round(1000 * S.received / (S.tLast - S.tFirst)) + '/s' : '–'),
+    stat('Request p50', p50 == null ? '–' : Math.round(p50) + ' ms'), stat('Request p95', p95 == null ? '–' : Math.round(p95) + ' ms'),
+    stat('Requests', S.lat.length), stat(S.spent != null ? 'Est. cost' : 'Input tokens', S.spent != null ? '$' + S.spent.toFixed(4) : S.tokens.toLocaleString()), stat('In flight', S.inflight)].join('');
+  M.update({ lat: S.lat, tokens: S.tokens, counts: S.counts, countsLabel: 'bowls chosen', done: S.classified, last: S.last, now: S.finishedAt || 0, latLabel: `Response time (one point per batch of ${S.batch})`, rate: S.t0 ? S.rate : null, rateLabel: 'Candies landing per second', cut: { turns: S.cutTurns, options: S.cutOptions, state: S.stateCut } });
+}
+
+let prev = 0, cmAt = 0;
+function frame(t) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(100, t - prev); prev = t;
+  if (S) { step(dt); pump(); if (S.running || S.finished) render(); if (t - cmAt > 250) { renderCM(); cmAt = t; } }
+  draw(t);
+}
+
+function start() {
+  if (!$('#model').value) { say('Load a model first.', true); return; }
+  say('');
+  if (!S || S.finished) { M.resetMonitor(); S = newRun(); $('#report').className = ''; }
+  if (!S.running && !S.t0) { // first start: read the run settings now (the pile itself was built when the pile controls last changed)
+    S.model = $('#model').value; S.hints = $('#hints').value; S.batch = +$('#batch').value; S.animateEvery = +$('#animate').value;
+    S.t0 = performance.now(); S.running = true; $('#go').textContent = 'Pause'; return;
+  }
+  S.paused = !S.paused; S.running = true; $('#go').textContent = S.paused ? 'Resume' : 'Pause';
+}
+$('#go').addEventListener('click', start);
+function newPile() { M.resetMonitor(); S = newRun(); $('#report').className = ''; $('#go').textContent = 'Start'; say(''); renderCM(); render(); }
+$('#new').addEventListener('click', newPile);
+for (const id of ['difficulty', 'balls']) $('#' + id).addEventListener('change', () => { if (!S || !S.running) newPile(); }); // the pile depends on these
+for (const id of ['seed', 'hints', 'difficulty', 'balls', 'batch', 'animate']) if (QP.get(id)) $('#' + id).value = QP.get(id);
+$('#fs').addEventListener('click', () => { const st = $('#stage'); if (document.fullscreenElement) document.exitFullscreen(); else if (st.requestFullscreen) st.requestFullscreen(); });
+window.__sorter = { get S() { return S; }, G };
+S = newRun(); renderCM(); render(); requestAnimationFrame(frame);
+loadModels().then(() => { if (QP.get('auto')) start(); });
+</script>
+</body>
+</html>

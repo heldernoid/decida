@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decida bench: AI Town</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2024%2024%22%3E%3Crect%20x=%221%22%20y=%2216%22%20width=%224%22%20height=%225%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%227%22%20y=%223%22%20width=%224%22%20height=%2218%22%20rx=%221%22%20fill=%22%233a34d2%22/%3E%3Crect%20x=%2213%22%20y=%2213%22%20width=%224%22%20height=%228%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%2219%22%20y=%2218%22%20width=%224%22%20height=%223%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3C/svg%3E">
+<!-- Concept from Matthew Berman's video "We need to talk about Jev..." (https://www.youtube.com/watch?v=2z-7pIj57f8). The town, its renderer and every line of code here are our own. -->
+<style>
+:root{--cream:#fbf6e6;--cream2:#f3ecd6;--ink:#1f3a2c;--ink2:#4c6656;--ink3:#7f9486;--line:#d9d2b8;--green:#27563f;--sage:#c6dbb0;--red:#c8452e;--amber:#e39a2d;--sans:ui-rounded,"SF Pro Rounded",system-ui,-apple-system,"Segoe UI",sans-serif;--mono:ui-monospace,Menlo,monospace}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{font-family:var(--sans);color:var(--ink);background:var(--sage);overflow:hidden}
+button,select,textarea{font:inherit;color:inherit}
+header.bar{position:fixed;left:0;right:0;top:0;height:56px;z-index:20;background:var(--cream);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:0 20px}
+header.bar a{color:var(--ink2);font-size:13px;text-decoration:none}
+.logo{display:flex;align-items:center;gap:8px;font-weight:800;font-size:24px;letter-spacing:-.03em;color:var(--ink)}
+.logo svg{width:24px;height:24px}
+.tag{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink2);border-left:1px solid var(--line);padding-left:14px}
+.tag i{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--red);margin-right:6px;vertical-align:1px}
+.spacer{flex:1}
+.credit-top{font-size:12px;color:var(--ink3);text-decoration:underline;white-space:nowrap}@media (max-width:900px){.credit-top{display:none}}
+.chip{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 12px;border:1px solid var(--line);border-radius:999px;background:var(--cream2);font-size:12.5px;color:var(--ink2)}
+.chip .dot{width:8px;height:8px;border-radius:50%;background:#7ab892}
+.chip select{border:0;background:transparent;font-size:12.5px;color:var(--ink);max-width:180px}
+details.adv{position:relative}details.adv summary{list-style:none;cursor:pointer;height:30px;display:inline-flex;align-items:center;padding:0 12px;border:1px solid var(--line);border-radius:999px;background:var(--cream2);font-size:12.5px;color:var(--ink2)}
+details.adv summary::-webkit-details-marker{display:none}
+details.adv .pop{position:absolute;right:0;top:38px;width:340px;background:var(--cream);border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:0 18px 40px -20px rgba(20,40,20,.5);font-size:13px;line-height:1.45;z-index:30}
+details.adv label{display:block;margin:8px 0 3px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3)}
+details.adv select{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.stage{position:fixed;inset:56px 0 0 0;overflow:hidden}
+canvas#cv{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab;touch-action:none}
+canvas#cv.drag{cursor:grabbing}
+.card{position:absolute;background:var(--cream);border:1px solid var(--line);border-radius:16px;box-shadow:0 14px 34px -22px rgba(20,50,20,.55)}
+/* top left: the town and its people */
+#town{left:22px;top:18px;width:min(470px,calc(100vw - 44px));background:none;border:0;box-shadow:none}
+#town h1{margin:0;font-size:30px;letter-spacing:-.03em;display:flex;align-items:center;gap:8px}#town h1 small{font-size:12px;color:var(--ink2);font-weight:500}
+#town .sub{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--ink2);margin:6px 0 10px}
+.live{font-size:10px;letter-spacing:.14em;background:var(--cream);border:1px solid var(--line);border-radius:6px;padding:2px 7px}
+.live i{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--red);margin-right:4px;vertical-align:1px}
+#strip{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 8px;scrollbar-width:none;mask-image:linear-gradient(90deg,#000 88%,transparent)}
+.av{flex:0 0 38px;height:44px;border-radius:12px;border:2px solid #fff;background:var(--cream);box-shadow:0 2px 6px -2px rgba(0,0,0,.3);cursor:pointer;position:relative;padding:0;overflow:hidden}
+.av.sel{outline:3px solid var(--green);outline-offset:1px}.av.dim{opacity:.3}
+.av b{position:absolute;left:0;right:0;bottom:0;height:16px}.av span{position:absolute;left:50%;top:6px;width:18px;height:18px;margin-left:-9px;border-radius:50%}
+.av em{position:absolute;right:2px;top:2px;width:9px;height:9px;border-radius:50%;border:1.5px solid #fff}
+#hood{margin-top:2px;padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:var(--cream);font-size:13px;width:190px}
+#said{margin-top:12px;padding:12px 14px;width:290px;border-left:4px solid var(--red);display:none}
+#said.on{display:block}#said h4{margin:0 0 4px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--red)}#said p{margin:0;font-size:15px;line-height:1.35}
+/* top centre: the timer */
+#timer{left:50%;top:14px;transform:translateX(-50%);width:min(440px,calc(100vw - 30px));padding:14px 20px 12px;text-align:center}
+#timer small{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink3)}
+#timer h2{margin:6px 0 2px;font-size:22px;letter-spacing:-.02em}
+#secs{font-size:50px;line-height:1.05;font-weight:800;color:var(--red);letter-spacing:-.03em;min-height:52px}#secs sub{font-size:19px;font-weight:600;color:var(--ink2);margin-left:6px;vertical-align:baseline}
+#secs.idle{color:var(--red);opacity:.85}
+#tline{font-size:13px;color:var(--ink2);min-height:18px}
+#lights{display:grid;grid-template-columns:repeat(25,1fr);gap:3px;margin:10px auto 6px;max-width:300px}
+#lights i{height:8px;border-radius:2.5px;background:#e3dcc3;transition:background .15s}#lights i.on{background:var(--green)}
+#counts{font-size:12.5px;color:var(--ink);min-height:18px;display:flex;justify-content:center;gap:10px;flex-wrap:wrap}#counts b{font-weight:700}
+#how{font-size:11.5px;color:var(--ink3);margin-top:3px;min-height:15px}
+#inputs{margin-top:8px;padding-top:8px;border-top:1px solid var(--line);font-size:12.5px;font-weight:700;background:none;border-left:0;border-right:0;border-bottom:0;width:100%;cursor:pointer;color:var(--ink)}
+/* bottom left */
+#clock{left:22px;bottom:18px;padding:8px 12px;display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--ink2);border-radius:12px}
+#clock button{border:0;background:none;cursor:pointer;font-size:12px;color:var(--ink2);padding:0}#clock button:disabled{opacity:.4;cursor:default}
+#clock .day{font-size:10.5px;letter-spacing:.1em;color:var(--ink2)}#clock i.sep{width:1px;height:14px;background:var(--line)}
+#status{left:22px;bottom:68px;padding:8px 12px;font-size:12px;color:var(--ink2);display:flex;align-items:center;gap:8px;border-radius:12px;max-width:250px}
+#status i{width:6px;height:6px;border-radius:50%;background:var(--green)}
+#pause{left:284px;bottom:18px;width:38px;height:38px;border-radius:12px;display:grid;place-items:center;cursor:pointer;padding:0}
+/* bottom right */
+#zoom{right:22px;bottom:70px;padding:6px 10px;display:flex;align-items:center;gap:8px;font-size:12px;border-radius:12px}
+#zoom button{border:0;background:none;cursor:pointer;font-size:15px;padding:2px 6px;color:var(--ink)}#zoom button.on{background:var(--green);color:#fff;border-radius:8px;padding:4px 10px;font-size:12px}
+#zoom .t{color:var(--ink2)}#zoom small{color:var(--ink3);font-size:10px}
+#decisions{right:22px;bottom:18px;padding:9px 14px;font-size:12.5px;cursor:pointer;display:flex;align-items:center;gap:8px;border-radius:12px}
+#decisions i{width:10px;height:10px;border-radius:50%;border:2px solid var(--green);background:var(--green)}#decisions.off i{background:none}
+/* bottom centre: the composer */
+#composer{left:50%;bottom:16px;transform:translateX(-50%);width:min(760px,calc(100vw - 30px));padding:14px 16px 12px;border-radius:20px}
+#comp{display:flex;gap:12px;align-items:stretch}
+#sender{flex:0 0 150px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--cream2);font-size:14px}
+#msg{flex:1;min-height:58px;max-height:96px;resize:none;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fffdf6;font-size:15px;line-height:1.35}
+#go{flex:0 0 150px;border:0;border-radius:12px;background:var(--green);color:#fff;font-weight:700;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+#go:disabled{opacity:.55;cursor:default}
+#chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+#chips button{flex:1 1 auto;border:1px solid var(--line);background:var(--cream2);border-radius:10px;padding:6px 11px;font-size:11.5px;color:var(--ink2);cursor:pointer;white-space:nowrap}
+#chips button:hover{background:#efe6c6}
+#fine{position:absolute;left:0;right:0;bottom:2px;text-align:center;font-size:9.5px;color:var(--ink2);opacity:.8;pointer-events:none}
+/* the inputs drawer */
+#drawer{right:18px;top:72px;width:min(400px,calc(100vw - 36px));max-height:calc(100vh - 150px);overflow:auto;padding:16px 18px;display:none;z-index:15}
+#drawer.on{display:block}#drawer h3{margin:0 0 2px;font-size:19px}#drawer .who{font-size:12.5px;color:var(--ink2);margin-bottom:10px}
+#drawer h5{margin:12px 0 5px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3)}
+#drawer pre{white-space:pre-wrap;font:12.5px/1.45 var(--mono);background:#fffdf6;border:1px solid var(--line);border-radius:10px;padding:10px;margin:0}
+#drawer .row{display:grid;grid-template-columns:110px 1fr 40px;gap:8px;align-items:center;font-size:12px;margin:3px 0}
+#drawer .row .t{height:9px;border-radius:4px;background:#ece5cd;overflow:hidden}#drawer .row .t i{display:block;height:100%;background:var(--ink3)}#drawer .row.top .t i{background:var(--green)}#drawer .row.top span:first-child{font-weight:700}#drawer .row span:last-child{text-align:right;font-family:var(--mono);color:var(--ink3)}
+#drawer .x{position:absolute;right:12px;top:10px;border:0;background:none;font-size:20px;cursor:pointer;color:var(--ink3)}
+#toast{position:fixed;left:50%;top:70px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:12px;font-size:13px;z-index:40;display:none;max-width:90vw}
+@media (max-width:1500px){#zoom{bottom:auto;top:72px;right:18px}}
+@media (max-width:900px){#timer{top:auto;bottom:210px;transform:translateX(-50%)}#town{width:calc(100vw - 30px)}#zoom{display:none}#clock,#status,#pause{display:none}#sender{flex-basis:110px}#go{flex-basis:110px}.tag{display:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header class="bar">
+  <a href="/">&larr; Decida</a>
+  <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg>AI Town<span style="color:var(--red)">.</span></div>
+  <span class="tag"><i></i>Live decision lab</span>
+  <span class="spacer"></span>
+  <a class="credit-top" href="https://www.youtube.com/watch?v=2z-7pIj57f8" target="_blank" rel="noopener" title="The idea comes from this video. The design and code are our own.">Idea: Matthew Berman</a>
+  <span class="chip"><span class="dot"></span><select id="model" aria-label="Model"></select></span>
+  <details class="adv"><summary>Advanced</summary><div class="pop">
+    <label for="method">How citizens decide</label>
+    <select id="method"><option value="auto">Automatic (by model)</option><option value="model">The model decides each citizen</option><option value="rules">The model reads, personalities decide</option></select>
+    <p style="margin:8px 0 0;color:var(--ink2)"><b>The model decides:</b> every citizen asks the model one typed question (what to do, where to go, how they feel). Works with strong models. <b>The model reads:</b> one request reads the announcement (which place, is it a danger, is it an offer); each citizen's temperament, job and trust in the sender turn that into an action. This suits small local models, which read text well but cannot tell one person's reaction from another's.</p>
+  </div></details>
+</header>
+<div class="stage" id="stage">
+  <canvas id="cv" aria-label="An isometric map of the town with fifty citizens"></canvas>
+
+  <div class="card" id="town">
+    <h1><span id="townName">Decida Town</span> <small>&#9728; 22&deg;</small></h1>
+    <div class="sub"><span>50 citizens &middot; 5 neighbourhoods</span><span class="live"><i></i>LIVE</span></div>
+    <div id="strip" role="list"></div>
+    <select id="hood" aria-label="Neighbourhood"><option value="">All neighbourhoods</option></select>
+    <div class="card" id="said" style="position:relative"><h4 id="saidWho"></h4><p id="saidText"></p></div>
+  </div>
+
+  <div class="card" id="timer">
+    <small id="tk">Live decision timer</small>
+    <h2 id="th">One announcement. 50 decisions.</h2>
+    <div id="secs" class="idle" aria-live="polite">&mdash;<sub>seconds</sub></div>
+    <div id="tline">Broadcast to start the live stopwatch.</div>
+    <div id="lights" aria-hidden="true"></div>
+    <div style="font-size:10.5px;color:var(--ink3)" id="lightCap">One light for every citizen</div>
+    <div id="counts"></div><div id="how"></div>
+    <button id="inputs" type="button">See the inputs behind a decision &rarr;</button>
+  </div>
+
+  <div class="card" id="status"><i></i><span id="statusText">A quiet afternoon in Decida Town</span></div>
+  <div class="card" id="clock"><button id="rewind" disabled>&#8630; Rewind</button><i class="sep"></i><button id="reset">&#8635; Reset town</button><span class="day" id="day">DAY 01 &middot; 14:00</span></div>
+  <button class="card" id="pause" aria-label="Pause the town" title="Pause">&#10074;&#10074;</button>
+
+  <div class="card" id="zoom"><button id="zout" aria-label="Zoom out">&minus;</button><span class="t" id="zval">1x</span><button id="zin" aria-label="Zoom in">+</button><span style="color:var(--line)">|</span><button id="fit" class="on">Fit town</button><button id="close">Close-up</button><small>Drag to explore</small></div>
+  <button class="card" id="decisions" type="button"><i></i>Show decisions</button>
+
+  <div class="card" id="composer">
+    <div id="comp"><select id="sender" aria-label="Who is speaking"></select><textarea id="msg" maxlength="220" aria-label="Announcement"></textarea><button id="go" type="button">Broadcast <span aria-hidden="true">&#8599;</span></button></div>
+    <div id="chips"></div>
+    <div id="fine">Announcements are claims. These are residents' perceptions, not verified facts about the world.</div>
+    <div style="height:14px"></div>
+  </div>
+
+  <aside class="card" id="drawer" aria-label="Inputs behind a decision"><button class="x" id="dx" aria-label="Close">&times;</button><div id="dbody"></div></aside>
+</div>
+<div id="toast" role="status"></div>
+<script type="module">
+import * as T from './town.js';
+import * as S from './sim.js';
+import { createRenderer, ACTION_STYLE, FEELING_COLOUR } from './render.js';
+import { rng } from '../common/rng.js';
+
+const $ = s => document.querySelector(s), QP = new URLSearchParams(location.search), esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+$('#townName').textContent = T.TOWN_NAME;
+const town = T.buildTown(7), citizens = T.makeCitizens(town, 11);
+S.placeCitizens(citizens);
+const canvas = $('#cv'), R = createRenderer(canvas, town), rand = rng(99);
+const st = { citizens, selected: null, hovered: null, hoverBuilding: null, showDecisions: true, time: 0, filter: '', labelled: [] };
+let viewMode = 'fit', paused = false, gameMin = 14 * 60, run = null, snapshot = null, broadcastNo = 0, models = [];
+
+// ---------- toast, models ----------
+const toast = (t, ms = 4000) => { const e = $('#toast'); e.textContent = t; e.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => { e.style.display = 'none'; }, ms); };
+async function api(path, init) { const r = await fetch(path, init), j = await r.json().catch(() => ({})); if (!r.ok) throw new Error((j.error && j.error.message) || j.detail || r.statusText); return j; }
+async function loadModels() {
+  try {
+    const d = await api('/v1/models'); models = d.models.filter(m => m.status === 'ready' || m.status === 'registered');
+    $('#model').innerHTML = models.map(m => `<option value="${esc(m.name)}">${esc(m.name)}${m.backend === 'remote' ? ' (hosted)' : ''}</option>`).join('');
+    const want = QP.get('model') || d.default; if (models.some(m => m.name === want)) $('#model').value = want;
+  } catch (e) { toast('Cannot reach the Decida server: ' + e.message); }
+}
+const backendOf = name => (models.find(m => m.name === name) || {}).backend;
+
+// ---------- the roster and neighbourhoods ----------
+$('#hood').innerHTML += T.QUARTERS.map(q => `<option value="${q.id}">${q.name}</option>`).join('');
+$('#strip').innerHTML = citizens.map(c => `<button class="av" data-id="${c.id}" title="${esc(c.name)}, ${esc(c.role)}"><b style="background:${c.look.shirt}"></b><span style="background:${c.look.skin}"></span><em style="background:transparent"></em></button>`).join('');
+$('#strip').addEventListener('click', e => { const b = e.target.closest('.av'); if (b) select(citizens[+b.dataset.id], true); });
+$('#hood').addEventListener('change', () => { st.filter = $('#hood').value; document.querySelectorAll('.av').forEach(b => b.classList.toggle('dim', !!st.filter && citizens[+b.dataset.id].quarter !== st.filter)); });
+function select(c, focus) {
+  st.selected = c; document.querySelectorAll('.av').forEach(b => b.classList.toggle('sel', +b.dataset.id === c.id));
+  if (focus) { const [wx, wy] = [(c.px - c.py) * 32, (c.px + c.py) * 16]; R.cam.x += (wx - R.cam.x) * 0.8; R.cam.y += (wy - R.cam.y) * 0.8; }
+  if ($('#drawer').classList.contains('on')) inspect(c);
+}
+
+// ---------- the composer ----------
+$('#sender').innerHTML = Object.entries(T.SENDERS).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
+$('#msg').value = T.PRESETS[0];
+$('#chips').innerHTML = T.PRESETS.map((p, i) => `<button type="button" title="${esc(p)}">${esc(T.PRESET_LABELS[i])}</button>`).join('');
+$('#chips').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { $('#msg').value = T.PRESETS[[...$('#chips').children].indexOf(b)]; $('#msg').focus(); } });
+$('#msg').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || !e.shiftKey)) { e.preventDefault(); broadcast(); } });
+$('#go').addEventListener('click', broadcast);
+
+// ---------- the timer card ----------
+const lights = $('#lights'); lights.innerHTML = '<i></i>'.repeat(50);
+function paintCounts() {
+  const t = T.tally(citizens); if (!t.total) { $('#counts').innerHTML = ''; return; }
+  $('#counts').innerHTML = Object.entries(t.actions).filter(([, v]) => v).map(([k, v]) => `<span><b style="color:${ACTION_STYLE[k].c}">${v}</b> ${T.ACTION_LABEL[k]}</span>`).join('');
+}
+function timerIdle() { $('#th').textContent = 'One announcement. 50 decisions.'; $('#secs').className = 'idle'; $('#secs').innerHTML = '&mdash;<sub>seconds</sub>'; $('#tline').textContent = 'Broadcast to start the live stopwatch.'; $('#tk').textContent = 'Live decision timer'; $('#counts').innerHTML = ''; $('#how').textContent = ''; [...lights.children].forEach(l => l.classList.remove('on')); $('#lightCap').textContent = 'One light for every citizen'; }
+function tick() {
+  if (!run || run.done) return;
+  $('#secs').innerHTML = `${((performance.now() - run.t0) / 1000).toFixed(2)}<sub>seconds</sub>`;
+}
+
+// ---------- broadcasting ----------
+async function broadcast() {
+  if (run && !run.done) return;
+  const text = $('#msg').value.trim(), sender = $('#sender').value, model = $('#model').value;
+  if (!text) { toast('Write an announcement first.'); return; }
+  if (!model) { toast('Load a model first: start the server with --model.'); return; }
+  const method = $('#method').value === 'auto' ? (backendOf(model) === 'remote' ? 'model' : 'rules') : $('#method').value;
+  snapshot = citizens.map(c => ({ id: c.id, px: c.px, py: c.py, at: c.at, activity: c.activity, timer: c.timer })); $('#rewind').disabled = false;
+  for (const c of citizens) { c.decision = null; c.bubble = null; c.reaction = null; }
+  broadcastNo++; $('#said').classList.add('on'); $('#saidWho').textContent = `${T.SENDERS[sender].label} · Broadcast ${broadcastNo}`; $('#saidText').textContent = text;
+  run = { t0: performance.now(), done: false, method, model, text, sender, requests: 0, tokens: 0, inspect: {}, lat: [] };
+  [...lights.children].forEach(l => l.classList.remove('on')); $('#go').disabled = true; $('#th').textContent = 'Asking the model…'; $('#tk').textContent = 'Live decision timer';
+  $('#tline').textContent = method === 'model' ? `${model} is answering for every citizen.` : `${model} is reading the announcement.`; $('#how').textContent = ''; $('#counts').innerHTML = '';
+  $('#statusText').textContent = `The town is responding to broadcast ${broadcastNo}`;
+  try {
+    if (method === 'rules') await decideRules(run); else await decideModel(run);
+    const secs = (run.dataAt - run.t0) / 1000; run.done = true; run.secs = secs;   // stops when the answers arrive, not when the lights finish turning on
+    $('#th').textContent = '50 citizens chose what to do'; $('#tk').textContent = `${model} · all 50 responses ready`;
+    $('#secs').className = ''; $('#secs').innerHTML = `${secs.toFixed(2)}<sub>seconds</sub>`;
+    $('#tline').textContent = secs < 1 ? 'Less than one second for the whole town.' : `${secs.toFixed(1)} seconds for the whole town.`;
+    $('#how').textContent = method === 'rules' ? `${run.requests} request read the announcement; each citizen's personality did the rest.` : `${run.requests} requests, one per citizen, answered by the model.`;
+    $('#lightCap').textContent = `${T.tally(citizens).total} of 50 responses received · measured live`;
+    paintCounts();
+  } catch (e) { run.done = true; toast('The model failed: ' + e.message, 7000); timerIdle(); for (const c of citizens) c.decision = null; }
+  finally { $('#go').disabled = false; }
+}
+const post = async (model, request) => { const t0 = performance.now(), json = await api('/v1/systemone', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model, ...request }) }); const ms = performance.now() - t0; run.requests++; run.tokens += (json.usage && json.usage.input_tokens) || 0; run.lat.push(ms); return json; };
+function apply(c, d, target) { S.react(c, town, d, target); if (c.bubble) c.bubble.at = 0; lights.children[c.id].classList.add('on'); paintCounts(); }
+
+async function decideRules(r) {   // mode 2: one request reads the announcement, personalities decide
+  const req = T.perceptionRequest(r.text, r.sender), j = await post(r.model, req), p = T.readPerception(j.answers), salt = T.textSalt(r.text + r.sender);
+  r.dataAt = performance.now();
+  r.perception = { request: req, p };
+  const ds = citizens.map(c => ({ c, d: T.decideByRules(c, p, r.sender, salt) }));
+  ds.forEach(({ c, d }, i) => { r.inspect[c.id] = { mode: 'rules', request: req, perception: p, decision: d }; setTimeout(() => apply(c, d, T.targetFor(town, citizens, c, d)), i * 14); });
+  await new Promise(res => setTimeout(res, 50 * 14 + 30));
+}
+async function decideModel(r) {   // mode 1: one typed request per citizen, all in one batch call (a browser opens only a few connections at once)
+  const reqs = citizens.map(c => T.requestFor(c, r.text, r.sender)), t0 = performance.now();
+  const j = await api('/v1/systemone/batch', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: r.model, requests: reqs }) });
+  r.dataAt = performance.now(); r.requests = reqs.length; r.lat.push(r.dataAt - t0);
+  const failed = j.responses.filter(x => x.error);
+  if (failed.length) throw new Error(`${failed.length} of ${reqs.length} answers failed: ${failed[0].error.message}`);
+  r.tokens = j.responses.reduce((a, x) => a + ((x.usage && x.usage.input_tokens) || 0), 0);
+  citizens.forEach((c, i) => {
+    const d = T.readDecision(j.responses[i].answers); r.inspect[c.id] = { mode: 'model', request: reqs[i], answers: j.responses[i].answers, decision: d };
+    c.decision = d; setTimeout(() => apply(c, d, T.targetFor(town, citizens, c, d)), i * 14);
+  });
+  await new Promise(res => setTimeout(res, 50 * 14 + 30));
+}
+
+// ---------- the inputs behind a decision ----------
+function bars(probs, top, labels = {}) { const keys = Object.keys(probs).sort((a, b) => probs[b] - probs[a]).slice(0, 6); return keys.map(k => `<div class="row${k === top ? ' top' : ''}"><span title="${esc(k)}">${esc(labels[k] || k.replace(/_/g, ' '))}</span><span class="t"><i style="width:${Math.max(1, 100 * probs[k])}%"></i></span><span>${Math.round(100 * probs[k])}%</span></div>`).join(''); }
+function inspect(c) {
+  const rec = run && run.inspect[c.id], d = $('#dbody');
+  const head = `<h3>${esc(c.name)}</h3><div class="who">${esc(c.role)} in their ${esc(c.age)} &middot; ${esc(c.temperament)} &middot; ${esc(c.home.quarter)} quarter &middot; works at ${esc(c.work.name)}</div>`;
+  if (!rec) { d.innerHTML = head + `<h5>What the model is told</h5><pre>${esc(T.stateFor(c, $('#msg').value.trim() || '…', $('#sender').value))}</pre><p style="font-size:12.5px;color:var(--ink2)">Broadcast an announcement to see this citizen's decision.</p>`; return; }
+  const dec = rec.decision;
+  if (rec.mode === 'model') {
+    d.innerHTML = head + `<h5>State sent</h5><pre>${esc(rec.request.state)}</pre><h5>What will ${esc(c.name)} do?</h5>${bars(rec.answers.action.probabilities, dec.action, T.ACTION_LABEL)}<h5>Where next?</h5>${bars(rec.answers.place.probabilities, dec.place)}<h5>How do they feel?</h5>${bars(rec.answers.feeling.probabilities, String(dec.feeling), Object.fromEntries(T.FEELINGS.map((f, i) => [String(i), f])))}<h5>Raw response</h5><pre>${esc(JSON.stringify(rec.answers, null, 1))}</pre>`;
+  } else {
+    const p = rec.perception;
+    d.innerHTML = head + `<h5>What the model read (one request for the whole town)</h5><pre>${esc(rec.request.state)}</pre><h5>Which place does it point to?</h5>${bars(p.placeProbs, p.place)}<h5>What kind of news is it?</h5><div class="row"><span>danger</span><span class="t"><i style="width:${100 * p.danger}%"></i></span><span>${Math.round(100 * p.danger)}%</span></div><div class="row"><span>offer</span><span class="t"><i style="width:${100 * p.offer}%"></i></span><span>${Math.round(100 * p.offer)}%</span></div><h5>Then ${esc(c.name)}'s personality decided</h5><pre>${esc(dec.why)}</pre>${bars(dec.probs, dec.action, T.ACTION_LABEL)}<p style="font-size:12.5px;color:var(--ink2)">Chosen: <b>${esc(T.ACTION_LABEL[dec.action])}</b>${dec.place !== 'stay' ? `, heading to ${esc(dec.place)}` : ''}.</p>`;
+  }
+}
+$('#inputs').addEventListener('click', () => { $('#drawer').classList.add('on'); inspect(st.selected || citizens.find(c => c.decision) || citizens[0]); if (!st.selected) select(citizens.find(c => c.decision) || citizens[0]); });
+$('#dx').addEventListener('click', () => $('#drawer').classList.remove('on'));
+
+// ---------- controls ----------
+$('#pause').addEventListener('click', () => { paused = !paused; $('#pause').innerHTML = paused ? '&#9654;' : '&#10074;&#10074;'; });
+$('#decisions').addEventListener('click', () => { st.showDecisions = !st.showDecisions; $('#decisions').classList.toggle('off', !st.showDecisions); });
+$('#reset').addEventListener('click', () => { S.placeCitizens(citizens); run = null; snapshot = null; $('#rewind').disabled = true; $('#said').classList.remove('on'); timerIdle(); paintCounts(); document.querySelectorAll('.av em').forEach(e => { e.style.background = 'transparent'; }); $('#statusText').textContent = `A quiet afternoon in ${T.TOWN_NAME}`; broadcastNo = 0; gameMin = 14 * 60; });
+$('#rewind').addEventListener('click', () => {
+  if (!snapshot) return;
+  for (const s of snapshot) { const c = citizens[s.id]; Object.assign(c, { px: s.px, py: s.py, at: s.at, activity: s.activity === 'walking' || s.activity === 'reacting-walk' ? 'routine' : s.activity, route: [], timer: 2, decision: null, bubble: null, reaction: null }); }
+  snapshot = null; $('#rewind').disabled = true; run = null; timerIdle(); paintCounts(); $('#said').classList.remove('on'); $('#statusText').textContent = 'Rewound to before the broadcast';
+});
+const zoomBy = f => R.zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, f);
+$('#zin').addEventListener('click', () => zoomBy(1.25)); $('#zout').addEventListener('click', () => zoomBy(0.8));
+$('#fit').addEventListener('click', () => { viewMode = 'fit'; R.fit(); $('#fit').classList.add('on'); $('#close').classList.remove('on'); });
+$('#close').addEventListener('click', () => { viewMode = 'close'; R.closeUp(); $('#close').classList.add('on'); $('#fit').classList.remove('on'); });
+let drag = null;
+canvas.addEventListener('pointerdown', e => { viewMode = ''; drag = { x: e.clientX, y: e.clientY, moved: 0 }; canvas.setPointerCapture(e.pointerId); canvas.classList.add('drag'); });
+canvas.addEventListener('pointermove', e => {
+  const rect = canvas.getBoundingClientRect(), sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+  if (drag) { R.pan(e.clientX - drag.x, e.clientY - drag.y); drag.moved += Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y); drag.x = e.clientX; drag.y = e.clientY; }
+  else { const h = R.pick(sx, sy, citizens); st.hovered = h.citizen || null; st.hoverBuilding = h.building || null; }
+});
+canvas.addEventListener('pointerup', e => {
+  canvas.classList.remove('drag'); const wasClick = drag && drag.moved < 5; drag = null;
+  if (wasClick) { const rect = canvas.getBoundingClientRect(), h = R.pick(e.clientX - rect.left, e.clientY - rect.top, citizens); if (h.citizen) select(h.citizen); }
+});
+canvas.addEventListener('wheel', e => { e.preventDefault(); viewMode = ''; const rect = canvas.getBoundingClientRect(); R.zoomAt(e.clientX - rect.left, e.clientY - rect.top, Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
+addEventListener('resize', () => { R.resize(); if (viewMode === 'fit') R.fit(); else if (viewMode === 'close') R.closeUp(); });
+
+// ---------- the loop ----------
+let last = performance.now(), avTick = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (!paused) {
+    st.time += dt; gameMin += dt / 1.2;
+    for (const c of citizens) { S.step(c, dt); S.routine(c, town, citizens, rand); if (c.bubble) c.bubble.at += dt; }
+    const m = Math.floor(gameMin) % (24 * 60); $('#day').textContent = `DAY ${String(1 + Math.floor(gameMin / (24 * 60))).padStart(2, '0')} · ${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  }
+  tick(); st.filter = $('#hood').value;
+  st.labelled = citizens.filter(c => c.reaction && c.target && c.activity === 'reacting-walk').map(c => c.target.id);
+  if ((avTick += dt) > 0.25) { avTick = 0; document.querySelectorAll('.av em').forEach((e, i) => { const d = citizens[i].decision; e.style.background = d ? FEELING_COLOUR[d.feeling] : 'transparent'; }); $('#zval').textContent = R.cam.zoom.toFixed(2).replace(/0+$/, '').replace(/\.$/, '') + 'x'; }
+  R.draw(st);
+}
+R.resize(); R.fit(); requestAnimationFrame(frame);
+window.__town = { town, citizens, st, R, get run() { return run; }, broadcast, select };
+loadModels().then(() => { if (QP.get('msg')) $('#msg').value = QP.get('msg'); if (QP.get('sender')) $('#sender').value = QP.get('sender'); if (QP.get('method')) $('#method').value = QP.get('method'); if (QP.get('auto')) setTimeout(broadcast, 400); });
+</script>
+</body>
+</html>

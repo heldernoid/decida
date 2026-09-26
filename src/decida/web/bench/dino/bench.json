@@ -1,0 +1,1 @@
+{"title": "T-Rex runner", "description": "A 60 FPS game where the model decides every few frames. Toggle the shield to see who is really playing, and lockstep to take latency out of the picture.", "tags": ["real-time", "games", "latency p50/p95"]}

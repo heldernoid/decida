@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decida bench: Wikispeedia</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2024%2024%22%3E%3Crect%20x=%221%22%20y=%2216%22%20width=%224%22%20height=%225%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%227%22%20y=%223%22%20width=%224%22%20height=%2218%22%20rx=%221%22%20fill=%22%233a34d2%22/%3E%3Crect%20x=%2213%22%20y=%2213%22%20width=%224%22%20height=%228%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%2219%22%20y=%2218%22%20width=%224%22%20height=%223%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../common/bench.css">
+<style>
+#gate{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px;background:var(--surface);font-size:13.5px}
+#gate.ok{display:none}
+#gate .trk{height:10px;border-radius:5px;background:var(--line);overflow:hidden;margin:8px 0}
+#gate .trk i{display:block;height:100%;width:0;background:var(--acc);transition:width .3s}
+#gate small{color:var(--ink3);display:block;line-height:1.4}
+.trail{display:flex;flex-wrap:wrap;align-items:center;gap:6px 4px;margin:6px 0 12px;min-height:34px}
+.chip{padding:5px 11px;border-radius:999px;border:1.5px solid var(--line);background:var(--surface);font-size:13px;font-weight:600;color:var(--ink)}
+.chip.start{border-color:var(--ink3)}
+.chip.closer{border-color:var(--green);background:color-mix(in srgb,var(--green) 14%,transparent)}
+.chip.same{border-color:var(--amber);background:var(--amber-bg)}
+.chip.farther,.chip.lost{border-color:var(--red);background:var(--red-bg)}
+.chip.now{box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 35%,transparent)}
+.chip.goal{border-style:dashed;border-color:var(--acc);color:var(--acc)}
+.chip.goal.won{background:var(--acc);color:var(--acc-ink);border-style:solid}
+.arrow{color:var(--ink3);font-size:13px}
+.page{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+@media (min-width:1000px){.page{grid-template-columns:minmax(0,1.05fr) minmax(0,1fr)}}
+.card{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--raised)}
+.card h3{margin:0 0 2px;font-size:20px}
+.card .cat{font-size:12px;color:var(--ink3);margin-bottom:8px}
+.card .lead{font-size:14.5px;line-height:1.5;color:var(--ink2)}
+.card .goalbox{margin-top:12px;padding-top:10px;border-top:1px dashed var(--line);font-size:13px;color:var(--ink2)}
+.badge{display:inline-block;font-size:11px;padding:2px 7px;border-radius:6px;background:var(--surface);border:1px solid var(--line);color:var(--ink3);margin-left:6px;vertical-align:2px}
+.cand{display:grid;grid-template-columns:20px minmax(90px,190px) 1fr 44px;gap:8px;align-items:center;font-size:13.5px;margin:5px 0}
+.cand .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cand .trk{height:14px;border-radius:5px;background:var(--surface);border:1px solid var(--line);overflow:hidden;position:relative}
+.cand .fl{position:absolute;inset:0 auto 0 0;background:var(--ink3);transition:width .2s}
+.cand.played .fl{background:var(--acc)}.cand.played .t{font-weight:700}
+.cand .pc{text-align:right;font-family:var(--mono);color:var(--ink3);font-size:12px}
+.mk{font-weight:800;text-align:center}.mk.closer{color:var(--green)}.mk.same{color:var(--amber)}.mk.farther,.mk.lost{color:var(--red)}
+.legend2{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--ink3);margin-top:8px}
+.hud{display:flex;gap:clamp(16px,3vw,40px);margin-bottom:6px;flex-wrap:wrap}
+.hud .k{font-size:11px;letter-spacing:.14em;color:var(--ink3);text-transform:uppercase}
+.hud .v{font:800 clamp(24px,3vw,34px)/1.1 var(--sans);font-variant-numeric:tabular-nums}
+table.games{border-collapse:collapse;font-size:12.5px;margin-top:8px;width:100%}
+table.games td,table.games th{padding:3px 8px;border-bottom:1px solid var(--line);text-align:left}
+.controls input[type=number]{width:70px}
+</style>
+</head>
+<body>
+<header><a href="/">&larr; Decida</a><h1>Wikispeedia</h1><span style="color:var(--ink3);font-size:13px">the model clicks links from a start article to a goal article; the dataset's own shortest paths label every click</span></header>
+<main class="wide">
+<section class="panel">
+  <div id="gate"><b id="gateT">Checking the Wikispeedia data...</b><div class="trk"><i id="gateBar"></i></div><small id="gateS"></small><button id="gateRetry" class="ghost" style="display:none;margin-top:8px">Retry download</button></div>
+  <div class="hud">
+    <div><div class="k">Game</div><div class="v" id="hGame">0</div></div>
+    <div><div class="k">Clicks</div><div class="v" id="hClicks">0</div></div>
+    <div><div class="k">Shortest from here</div><div class="v" id="hHops">-</div></div>
+    <div><div class="k">Human average</div><div class="v" id="hHuman">-</div></div>
+  </div>
+  <div class="trail" id="trail"></div>
+  <div class="page">
+    <div class="card"><h3 id="pgT">Press Start</h3><div class="cat" id="pgC"></div><div class="lead" id="pgL">Each game picks a start and a goal article. The model reads where the goal is and scores the links on the page; code clicks the best one.</div><div class="goalbox" id="goalBox"></div></div>
+    <div class="card"><h3 style="font-size:15px">The model's ranking of the links</h3><div id="cands" style="margin-top:8px"></div>
+      <div class="legend2"><span><b class="mk closer">&#10003;</b> gets closer</span><span><b class="mk same">=</b> same distance</span><span><b class="mk farther">&#10007;</b> farther or lost</span><span>marks come from the dataset, never shown to the model</span></div></div>
+  </div>
+  <div class="controls">
+    <label>Model <select id="model"></select></label>
+    <label title="Human pairs are real Wikispeedia games with a recorded human average">Pairs <select id="pairs"><option value="human">human pairs (2-3 clicks)</option><option value="random">random pairs (2-4 clicks)</option></select></label>
+    <label>Games <input type="number" id="games" value="5" min="1" max="200"></label>
+    <label title="A number replays the same pairs; random picks new ones">Seed <input type="text" id="seed" value="random" size="8"></label>
+    <label title="two-stage: score every link, then choose among the top 8. score: best score wins. tournament: choices among groups of 8">Strategy <select id="strategy"><option>two-stage</option><option>score</option><option>tournament</option></select></label>
+    <label title="What the model is told. peek shows what each link leads to, which a human only learns by opening it (assisted)">State <select id="design"><option value="hub">goal + hubs</option><option value="goal">goal profile</option><option value="lead">goal + page lead</option><option value="peek">goal + hubs + peek (assisted)</option><option value="titles">titles only</option></select></label>
+    <label title="Add each link's subject category to its description"><input type="checkbox" id="cat"> Categories</label>
+    <label title="Give up on a game after this many clicks">Max clicks <input type="number" id="maxc" value="20" min="2" max="60"></label>
+    <label title="Pause between clicks so you can watch">Delay <input type="number" id="delay" value="350" min="0" max="3000"> ms</label>
+    <button id="go" disabled>Start run</button>
+  </div>
+  <div id="msg"></div>
+  <div id="report"></div>
+  <p class="note">Visited pages are not offered again. Serve DecidaBERT-large with <code>--max-len 2142 --head-tokens 1400</code> so long descriptions are not cut. Data: Wikispeedia (West &amp; Leskovec; article text from Wikipedia for Schools, CC BY-SA), downloaded on first use.</p>
+</section>
+<section class="panel" id="side"></section>
+</main>
+<script type="module">
+import * as G from '../wikispeedia/game.js';
+import { pickSeed, rng } from '../common/rng.js';
+import * as M from '../common/monitor.js';
+const { esc, pct, stat } = M;
+const $ = s => document.querySelector(s);
+const QP = new URLSearchParams(location.search);
+$('#side').innerHTML = M.panelHTML();
+const say = (t, err) => { const m = $('#msg'); m.textContent = t || ''; m.className = t ? 'on' + (err ? ' err' : '') : ''; };
+const enc = encodeURIComponent;
+async function api(path, init) {
+  const r = await fetch(path, init), j = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(j.detail || (j.error && j.error.message) || r.statusText); e.status = r.status; throw e; }
+  return j;
+}
+
+// ---------- the dataset: check, and download when missing ----------
+let dataReady = false;
+async function ensureData() {
+  const gate = $('#gate'), bar = $('#gateBar');
+  try {
+    let st = await api('/v1/datasets/wikispeedia');
+    if (!st.present && st.state !== 'downloading') st = await api('/v1/datasets/wikispeedia/download', { method: 'POST' });
+    while (!st.present) {
+      if (st.state === 'error') throw new Error(st.error || 'download failed');
+      gate.className = ''; $('#gateT').textContent = `Downloading the Wikispeedia data (${Math.round(st.size / 1e6)} MB, once)...`;
+      bar.style.width = Math.min(100, (100 * st.done) / st.size) + '%';
+      $('#gateS').textContent = `${st.done ? Math.round(st.done / 1e6) : 0} of ${Math.round(st.size / 1e6)} MB. Source: ${st.source}. Licence: ${st.licence}`;
+      await new Promise(r => setTimeout(r, 600)); st = await api('/v1/datasets/wikispeedia');
+    }
+    gate.className = 'ok'; dataReady = true; $('#go').disabled = false;
+  } catch (e) {
+    gate.className = ''; $('#gateT').textContent = 'The Wikispeedia data is not available'; bar.style.width = '0';
+    $('#gateS').textContent = e.status === 404 && /^Not Found$/i.test(e.message) ? 'This server does not know the dataset endpoints: it was started before Wikispeedia support was added. Restart `decida serve` and reload this page.' : e.message;
+    $('#gateRetry').style.display = 'inline-block';
+  }
+}
+$('#gateRetry').addEventListener('click', () => { $('#gateRetry').style.display = 'none'; ensureData(); });
+
+async function loadModels() {
+  try {
+    const d = await api('/v1/models');
+    const ready = d.models.filter(m => m.status === 'ready' || m.status === 'registered');
+    $('#model').innerHTML = ready.map(m => `<option value="${esc(m.name)}">${esc(m.name)} (${m.backend})</option>`).join('');
+    const want = QP.get('model') || d.default;
+    if (ready.some(m => m.name === want)) $('#model').value = want;
+    if (!ready.length) say('No models loaded. Start the server with --model.', true);
+  } catch (e) { say('Cannot reach the Decida server: ' + e.message, true); }
+}
+
+// ---------- pairs ----------
+let missions = null;
+async function pickPair(seed, n) {
+  if ($('#pairs').value === 'random') {
+    const p = await api(`/v1/wikispeedia/pair?seed=${seed * 1000 + n}&min_hops=2&max_hops=4`);
+    return { start: p.start, target: p.target, hops: p.hops, human: p.human ? p.human.avg_clicks : null, record: p.human ? p.human.record_clicks : null };
+  }
+  if (!missions) missions = (await api('/v1/wikispeedia/missions?min_plays=5&limit=2000')).missions.filter(m => m.hops >= 2 && m.hops <= 3);
+  const r = rng(seed * 1000 + n), m = missions[Math.floor(r() * missions.length)];
+  return { start: m.start, target: m.target, hops: m.hops, human: m.avg_clicks, record: m.record_clicks };
+}
+
+// ---------- a run ----------
+let S = null;
+const cache = new Map();
+async function article(title, goal) {
+  const k = title + '\u0001' + goal; if (!cache.has(k)) cache.set(k, await api(`/v1/wikispeedia/article?title=${enc(title)}&target=${enc(goal)}`));
+  return cache.get(k);
+}
+const post = async request => {
+  const t0 = performance.now(), json = await api('/v1/systemone', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: S.model, ...request }) });
+  return { json, ms: performance.now() - t0 };
+};
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function newRunState() {
+  return { seed: pickSeed($('#seed').value), model: $('#model').value, strategy: $('#strategy').value, design: $('#design').value, hints: $('#cat').checked ? 'category' : 'none',
+    games: Math.max(1, +$('#games').value || 1), maxc: Math.max(2, +$('#maxc').value || 20), delay: Math.max(0, +$('#delay').value || 0), pairs: $('#pairs').value,
+    running: true, gameNo: 0, results: [], lat: [], tokens: 0, done: 0, verdicts: {}, steps: 0, closerSteps: 0, requests: 0, cutTurns: 0, cutOptions: 0, last: null, t0: performance.now() };
+}
+
+function renderTrail(run, cur, goal) {
+  const chips = run.path.map((t, i) => `<span class="chip ${i === 0 ? 'start' : run.judged[i - 1]}${i === run.path.length - 1 && run.status === 'playing' ? ' now' : ''}">${esc(t)}</span>`);
+  chips.push(`<span class="chip goal${run.status === 'won' ? ' won' : ''}">&#9873; ${esc(goal)}</span>`);
+  $('#trail').innerHTML = chips.join('<span class="arrow">&rsaquo;</span>');
+}
+
+function renderPage(view, goal, goalView, run) {
+  $('#pgT').innerHTML = esc(view.title) + (view.hub ? '<span class="badge">hub</span>' : '');
+  $('#pgC').textContent = view.category; $('#pgL').textContent = view.lead;
+  $('#goalBox').innerHTML = `<b>Goal: ${esc(goal)}</b> <span style="color:var(--ink3)">${esc(goalView.category)}</span><br>${esc(goalView.lead.slice(0, 240))}${goalView.lead.length > 240 ? '...' : ''}`;
+  $('#hClicks').textContent = `${run.clicks}/${run.maxClicks}`; $('#hHops').textContent = view.hops_to_target == null ? 'none' : view.hops_to_target;
+}
+
+function renderCands(r, view, opts) {
+  const by = new Map(opts.map(l => [l.title, l])), top = (r.ranking || []).slice(0, 10), max = Math.max(...top.map(x => x.score), 1e-9);
+  const normalised = r.ranking && r.ranking.length && r.ranking[0].score <= 1.0000001 && r.ranking.reduce((a, x) => a + x.score, 0) < 1.01 ? 1 : 0; // choice probabilities sum to 1; levels do not
+  $('#cands').innerHTML = top.map(x => {
+    const l = by.get(x.title), v = l ? G.judge(view.hops_to_target, l.hops_to_target) : 'lost', played = r.pick && x.title === r.pick.title;
+    const mk = { closer: '&#10003;', same: '=', farther: '&#10007;', lost: '&#10007;' }[v], pc = normalised ? Math.round(100 * x.score) + '%' : x.score.toFixed(1);
+    return `<div class="cand${played ? ' played' : ''}"><span class="mk ${v}">${mk}</span><span class="t" title="${esc(x.title)}">${esc(x.title)}</span><span class="trk"><span class="fl" style="width:${Math.max(2, 100 * x.score / max)}%"></span></span><span class="pc">${pc}</span></div>`;
+  }).join('') + `<div class="note" style="margin-top:6px">${opts.length} links on this page, ${r.calls.length} request${r.calls.length === 1 ? '' : 's'} to decide</div>`;
+}
+
+function renderStats() {
+  const s = S, secs = Math.max(.001, (performance.now() - s.t0) / 1000), won = s.results.filter(x => x.status === 'won').length;
+  $('#stats').innerHTML = [stat('Games done', `${s.results.length}/${s.games}`), stat('Reached the goal', s.results.length ? `${won}/${s.results.length}` : '-'),
+    stat('Closer clicks', s.steps ? Math.round(100 * s.closerSteps / s.steps) + '%' : '-'), stat('Requests/s', s.requests ? (s.requests / secs).toFixed(1) : '-'),
+    stat('Latency p50', s.lat.length ? Math.round(pct(s.lat, .5)) + ' ms' : '-'), stat('Latency p95', s.lat.length ? Math.round(pct(s.lat, .95)) + ' ms' : '-')].join('');
+  M.update({ lat: s.lat, tokens: s.tokens, counts: s.verdicts, countsLabel: 'clicks', done: s.steps, last: s.last, now: s.running ? undefined : s.endT, cut: { turns: s.cutTurns, options: s.cutOptions, state: false } });
+}
+
+async function playGame(n) {
+  const pair = await pickPair(S.seed, n), goal = pair.target;
+  const goalView = await article(goal, goal), start = await article(pair.start, goal);
+  const run = G.newRun(pair.start, goal, start.hops_to_target, S.maxc), goalInfo = { title: goal, category: goalView.category, lead: goalView.lead, summary: goalView.lead };
+  S.current = run; $('#hGame').textContent = `${n + 1}/${S.games}`; $('#hHuman').textContent = pair.human ? pair.human.toFixed(1) : '-';
+  let cur = pair.start, view = start;
+  renderTrail(run, cur, goal);
+  while (run.status === 'playing' && S.running) {
+    view = await article(cur, goal);
+    const opts = G.options(view, run);
+    renderPage(view, goal, goalView, run);
+    if (!opts.length) { run.status = 'stuck'; break; }
+    const r = await G.decideHop(post, { article: view, goal: goalInfo, links: opts, strategy: S.strategy, design: S.design, hints: S.hints });
+    for (const c of r.calls) {
+      S.lat.push(c.ms); S.tokens += c.tokens; S.requests++;
+      const cut = c.json.x_decida && c.json.x_decida.truncation; if (cut && cut.options_cut) { S.cutTurns++; S.cutOptions = Math.max(S.cutOptions, cut.options_cut); }
+    }
+    const pick = r.pick, v = G.judge(view.hops_to_target, pick.hops_to_target);
+    S.steps++; if (v === 'closer') S.closerSteps++; S.verdicts[v] = (S.verdicts[v] || 0) + 1;
+    const src = r.last && r.last.a ? r.last : null, best = opts.find(l => l.hops_to_target === view.hops_to_target - 1);
+    const lastCall = r.calls[r.calls.length - 1];
+    S.last = { probs: src ? src.a.probabilities : Object.fromEntries(r.ranking.slice(0, 8).map(x => [x.title, Math.max(0.001, x.score / 4)])), choice: pick.title, confidence: src ? src.a.confidence : 0, ms: lastCall.ms,
+      oracle: best ? best.title : null, request: src ? src.q : lastCall.request, raw: lastCall.json };
+    renderCands(r, view, opts);
+    G.click(run, pick.title, v); cur = pick.title;
+    renderTrail(run, cur, goal); $('#hClicks').textContent = `${run.clicks}/${run.maxClicks}`;
+    renderStats();
+    if (S.delay) await sleep(S.delay);
+  }
+  if (!S.running && run.status === 'playing') run.status = 'stopped';
+  renderTrail(run, cur, goal); if (run.status === 'won') { $('#hHops').textContent = 0; }
+  S.results.push({ start: pair.start, target: goal, status: run.status, clicks: run.clicks, optimal: run.hops, human: pair.human, judged: run.judged });
+}
+
+function finish(why) {
+  if (!S) return;
+  const stopped = S.running; S.running = false; S.endT = performance.now(); $('#go').textContent = 'Start run';
+  renderStats();
+  const R = S.results, n = R.length, won = R.filter(x => x.status === 'won'), mean = a => (a.length ? (a.reduce((x, y) => x + y, 0) / a.length).toFixed(1) : 'n/a');
+  const p50 = pct(S.lat, .5), p95 = pct(S.lat, .95), hum = R.filter(x => x.human).map(x => x.human);
+  const r = $('#report'); r.className = 'on';
+  r.innerHTML = `<b>${n ? `Reached the goal in ${won.length} of ${n} games` : 'No game finished'}${why === 'stopped' ? ' (stopped)' : ''}</b><br>
+    model <b>${esc(S.model)}</b> · seed ${S.seed} · ${S.strategy} · state ${S.design}${S.hints === 'category' ? ' + categories' : ''} · ${S.pairs} pairs · max ${S.maxc} clicks<br>
+    clicks per game: mean ${mean(R.map(x => x.clicks))} (wins only ${mean(won.map(x => x.clicks))}) · shortest possible ${mean(R.map(x => x.optimal))} · human average ${mean(hum)}<br>
+    clicks that got closer ${S.steps ? Math.round(100 * S.closerSteps / S.steps) : 0}% (random clicking gets about 20%) · ${S.requests} requests · latency p50 ${p50 == null ? 'n/a' : p50.toFixed(0)} ms, p95 ${p95 == null ? 'n/a' : p95.toFixed(0)} ms${S.cutTurns ? ` · options cut on ${S.cutTurns} requests` : ''}
+    ${S.design === 'peek' ? '<br><b>Assisted mode:</b> the model was told what each link leads to.' : ''}
+    <table class="games"><tr><th>Start</th><th>Goal</th><th>Result</th><th>Clicks</th><th>Shortest</th><th>Human</th></tr>${R.map(x => `<tr><td>${esc(x.start)}</td><td>${esc(x.target)}</td><td>${x.status}</td><td>${x.clicks}</td><td>${x.optimal}</td><td>${x.human ? x.human.toFixed(1) : '-'}</td></tr>`).join('')}</table>`;
+}
+
+async function runAll() {
+  try { for (let n = 0; n < S.games && S.running; n++) { S.gameNo = n; await playGame(n); renderStats(); } finish(S.running ? 'done' : 'stopped'); }
+  catch (e) { say('Run failed: ' + e.message, true); finish('error'); }
+}
+
+$('#go').addEventListener('click', () => {
+  if (S && S.running) { S.running = false; return; }
+  if (!dataReady) { say('The dataset is not ready yet.', true); return; }
+  if (!$('#model').value) { say('Load a model first.', true); return; }
+  say(''); $('#report').className = ''; M.resetMonitor(); S = newRunState(); $('#go').textContent = 'Stop'; runAll();
+});
+for (const [id, k] of [['seed', 'seed'], ['games', 'games'], ['strategy', 'strategy'], ['design', 'design'], ['maxc', 'maxclicks'], ['delay', 'delay'], ['pairs', 'pairs']]) if (QP.get(k)) $('#' + id).value = QP.get(k);
+if (QP.get('cat')) $('#cat').checked = QP.get('cat') === '1';
+window.__wiki = { get S() { return S; }, G, get ready() { return dataReady; } };
+loadModels();
+ensureData().then(() => { if (QP.get('auto') && dataReady) $('#go').click(); });
+</script>
+</body>
+</html>
