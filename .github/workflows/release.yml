@@ -1,10 +1,12 @@
 name: Release
 
-# Every push to main that passes CI bumps the patch version (0.1.0 -> 0.1.1) and pushes a tag for it; tag-release.yml
-# turns that tag into a GitHub Release. It runs only after the CI workflow finishes successfully on that commit, so
-# a broken push is never released. To cut a minor or major release instead, bump `version` in pyproject.toml
-# yourself in the commit you push; this workflow only auto-increments the patch number when the version line did
-# not already change from the previous commit.
+# Every push to main that passes CI bumps the patch version (0.1.0 -> 0.1.1), tags it and creates the GitHub Release
+# itself (a tag pushed here with the default GITHUB_TOKEN does not trigger tag-release.yml — GitHub deliberately
+# does not let a GITHUB_TOKEN-authored push start another workflow, to stop recursive runs — so this job has to
+# create its own release directly rather than rely on that separate workflow). It runs only after the CI workflow
+# finishes successfully on that commit, so a broken push is never released. To cut a minor or major release
+# instead, bump `version` in pyproject.toml yourself in the commit you push; this workflow only auto-increments the
+# patch number when the version line did not already change from the previous commit.
 on:
   workflow_run:
     workflows: [CI]
@@ -51,4 +53,8 @@ jobs:
           git commit -m "chore: release v${{ steps.ver.outputs.version }} [skip ci]"
           git tag "v${{ steps.ver.outputs.version }}"
           git push origin HEAD:main
-          git push origin "v${{ steps.ver.outputs.version }}"   # tag-release.yml turns this into a GitHub Release
+          git push origin "v${{ steps.ver.outputs.version }}"
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "v${{ steps.ver.outputs.version }}" --title "v${{ steps.ver.outputs.version }}" --generate-notes
