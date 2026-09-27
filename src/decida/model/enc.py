@@ -190,14 +190,18 @@ class DecidaEncModel(nn.Module):
         else:
             cfg = {}
         
+        # ROCm (HIP) builds of PyTorch fail with hipErrorInvalidValue on gfx1151
+        # when using SDPA attention; eager is the safe fallback on AMD.
+        attn_impl = "eager" if getattr(torch.version, "hip", None) else "sdpa"
+
         enc_dir = os.path.join(path, "encoder")
         if os.path.exists(enc_dir):
             ecfg = AutoConfig.from_pretrained(enc_dir)
-            enc = AutoModel.from_config(ecfg, attn_implementation="sdpa")
+            enc = AutoModel.from_config(ecfg, attn_implementation=attn_impl)
         else:
             # Try from root or default? Fallback if encoder/ not found
             ecfg = AutoConfig.from_pretrained("answerdotai/ModernBERT-base")
-            enc = AutoModel.from_config(ecfg, attn_implementation="sdpa")
+            enc = AutoModel.from_config(ecfg, attn_implementation=attn_impl)
             
         # Infer n_act from act_head.2.weight
         act_weight = weights.get("act_head.2.weight", weights.get("core_model.act_head.2.weight"))

@@ -128,7 +128,7 @@ Decida is an independent project and is not affiliated with TypeSafe, Convai Inn
 
 - `~/.decida/settings.json` holds the model list and server options (`DECIDA_HOME` moves it). It holds no secrets.
 - Bench datasets go to `~/.decida/datasets/` (`DECIDA_DATA_DIR` overrides it). Model weights stay in Hugging Face's own cache.
-- The device is chosen as CUDA, then Apple GPU (MPS), then CPU, and `--device` overrides it. Encoder models run in float32. On an Apple GPU models take turns, because PyTorch's Metal backend is not thread safe.
+- The device is chosen as CUDA (AMD via ROCm uses this path; see the AMD section in Development), then Apple GPU (MPS), then CPU, and `--device` overrides it. Encoder models run in float32. On an Apple GPU models take turns, because PyTorch's Metal backend is not thread safe.
 - Decida does not check that a model fits before loading it, and it does not unload models by itself. The Models page has an Unload button, and `decida setup` removes models from the list.
 
 ## Writing questions that work
@@ -145,11 +145,64 @@ make lint                     # ruff and pyright
 
 The tests that need a tokenizer fetch the small tokenizer files of `helmo/DecidaBERT-large` from the Hub (cached), or read a folder named in `DECIDA_TEST_TOKENIZER`. Decida runs models; it does not train them or generate data. The code is under `src/decida/`: `runtime/` (detecting, loading and locating models), `serve/` (the engines and the API), `model/` (the encoder), `schema/` (the typed questions and answers), and `web/` (the home page and the benches).
 
+### AMD GPU (ROCm)
+
+Tested on AMD Ryzen AI Max+ 395 (Radeon 8060S, gfx1151, Strix Halo APU) with Ubuntu and ROCm 10.0. DecidaBERT-large: ~43 ms per request on the AMD GPU vs ~370 ms on the same box's CPU (n=3 warm runs, 2 questions each).
+
+AMD's ROCm stack maps `torch.cuda.*` calls to the AMD GPU through HIP, so Decida's CUDA path handles AMD without code changes. The standard install resolves `torch` to a CUDA-only wheel; use **AMD's own index** (`stable.repo.amd.com/rocm/whl-next/`) — it ships gfx1151-specific kernels and does not have the Strix Halo segfault in the PyTorch-distributed ROCm 7.1/7.2 wheels.
+
+**Global install (`uv tool install`):**
+
+```bash
+uv tool install git+https://github.com/heldernoid/decida
+uv pip install --no-config --python "$(uv tool dir)/decida/bin/python" \
+  --index-url https://stable.repo.amd.com/rocm/whl-next/ \
+  "torch==2.12.0+rocm10.0.0" "amd-torch-device-gfx1151"
+```
+
+Replace `gfx1151` with your GPU's architecture (`rocminfo | grep "Name:.*gfx"` to find it). `uv tool upgrade decida` reinstalls the CUDA-only wheel; rerun the `uv pip install` line after each upgrade.
+
+**Development install (`uv sync`):**
+
+```bash
+# Step 1: sync without the CUDA-only packages
+uv sync --frozen \
+  --no-install-package torch --no-install-package triton --no-install-package cuda-bindings \
+  --no-install-package nvidia-cublas --no-install-package nvidia-cuda-cupti \
+  --no-install-package nvidia-cuda-nvrtc --no-install-package nvidia-cuda-runtime \
+  --no-install-package nvidia-cudnn-cu13 --no-install-package nvidia-cufft \
+  --no-install-package nvidia-cufile --no-install-package nvidia-curand \
+  --no-install-package nvidia-cusolver --no-install-package nvidia-cusparse \
+  --no-install-package nvidia-cusparselt-cu13 --no-install-package nvidia-nccl-cu13 \
+  --no-install-package nvidia-nvjitlink --no-install-package nvidia-nvshmem-cu13 \
+  --no-install-package nvidia-nvtx
+
+# Step 2: install the AMD ROCm 10 wheel (--no-config bypasses the project's exclude-newer pin)
+uv pip install --no-config \
+  --index-url https://stable.repo.amd.com/rocm/whl-next/ \
+  "torch==2.12.0+rocm10.0.0" "amd-torch-device-gfx1151"
+```
+
+If `uv.lock` has drifted and step 1 reinstalls excluded packages, regenerate the exclude list:
+```bash
+python3 -c "import tomllib; print([p['name'] for p in tomllib.load(open('uv.lock','rb'))['package'] if p['name'].startswith('nvidia-') or p['name'] in ('triton','cuda-bindings')])"
+```
+
+**`uv run` re-syncs before every command and will silently reinstall the CUDA-only wheel.** Use `--no-sync` for all commands after step 2:
+
+```bash
+uv run --no-sync python3 -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else None)"
+uv run --no-sync decida serve
+uv run --no-sync decida check helmo/DecidaBERT-large --device cuda
+```
+
+Do not edit `pyproject.toml`'s torch dependency to point at an AMD index — that would break every non-AMD Linux user and CI.
+
 ## Limitations
 
 - Encoder models match the state against the options you give. They have little world knowledge, so tasks that need facts (for example, which page mentions which) suit larger models better.
 - Only English has been tested. Small models read text well but are weak at telling one person's reaction from another's; the AI Town bench shows this and says which mode it ran.
-- Testing focused solely on Apple Silicon (Apple GPU through MPS). Decida is wired to run on CPU on other systems and on CUDA, but those paths are untested.
+- Testing focused solely on Apple Silicon (Apple GPU through MPS) and AMD (Radeon 8060S via ROCm 10). CUDA on NVIDIA hardware is wired up but untested.
 
 ## Licence
 
