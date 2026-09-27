@@ -641,12 +641,14 @@ async function refreshModels(){
     defaultModel=d.default;
     DEVICE={kind:dev.device.toUpperCase(),name:dev.name,total:dev.memory_total_mb||0,used:dev.memory_used_mb||0};
     const ready=models.filter(m=>m.status==='ready');
-    const heroList=[...ready.filter(m=>m.backend!=='remote'),...ready.filter(m=>m.backend==='remote')];   // local models first, hosted ones after
+    // Every loaded model can be picked here, not only the ones already 'ready': with lazy loading (the default)
+    // nothing is ready until its first request, and that first request has to come from somewhere.
+    const heroList=[...models.filter(m=>m.backend!=='remote'),...models.filter(m=>m.backend==='remote')];
     $('#heroModels').innerHTML=heroList.length>3
-      ?`<select id="heroModelSel" aria-label="Model">${heroList.map(m=>`<option value="${esc(m.name)}"${m.name===hero.model?' selected':''}>${esc(m.name)}${m.backend==='remote'?' (hosted)':''}</option>`).join('')}</select>`
-      :heroList.map(m=>`<button aria-pressed="${m.name===hero.model}" data-m="${esc(m.name)}">${esc(m.name)}</button>`).join('');
-    const local=ready.filter(m=>m.backend!=='remote');
-    if(!ready.some(m=>m.name===hero.model)){hero.model=(local[0]||ready[0]||{}).name||null}
+      ?`<select id="heroModelSel" aria-label="Model">${heroList.map(m=>`<option value="${esc(m.name)}"${m.name===hero.model?' selected':''}>${esc(m.name)}${m.backend==='remote'?' (hosted)':m.status!=='ready'?' (not loaded yet)':''}</option>`).join('')}</select>`
+      :heroList.map(m=>`<button aria-pressed="${m.name===hero.model}" data-m="${esc(m.name)}">${esc(m.name)}${m.status!=='ready'&&m.backend!=='remote'?' ○':''}</button>`).join('');
+    const local=models.filter(m=>m.backend!=='remote');
+    if(!models.some(m=>m.name===hero.model)){hero.model=(local[0]||models[0]||{}).name||null}
     renderModels();
   }catch(e){toast('Cannot reach the Decida server: '+e.message)}
 }
@@ -719,7 +721,9 @@ async function runHero(){
   const P=PRESETS[hero.preset];
   $('#heroState').innerHTML=`<small>state</small>${esc(P.state)}`;
   const box=$('#heroAnswers');
-  if(!models.some(m=>m.name===hero.model&&m.status==='ready')){box.innerHTML='<div class="empty"><p>Load a model below to see live answers.</p></div>';return}
+  const m=models.find(x=>x.name===hero.model);
+  if(!m){box.innerHTML='<div class="empty"><p>No model to try. Add one on the Models page.</p></div>';return}
+  if(m.status!=='ready')box.innerHTML='<div class="empty"><p>Loading '+esc(m.name)+'… the first request downloads and loads it, so this can take a while.</p></div>';
   let r;try{r=await decide(hero.model,P.state,P.questions)}catch(e){box.innerHTML=`<div class="empty"><p>${esc(e.message)}</p></div>`;return}
   box.innerHTML='';
   for(const [k,q] of Object.entries(P.questions))box.appendChild(renderAnswer(k,q,r.answers[k],true));
@@ -730,6 +734,7 @@ async function runHero(){
   const first=Object.values(r.answers).find(a=>a.type==='choice');
   if(first){const ps=Object.values(first.probabilities).sort((a,b)=>b-a);const spans=$$('#heroRule span');spans.forEach((s,i)=>{s.style.flexGrow=Math.max(.02,(ps[i]||0))*100;s.style.display=i<ps.length?'block':'none'})}
   logActivity(hero.model,r,P.questions);
+  if(m.status!=='ready')refreshModels();   // the first request just loaded it; pick up the new status everywhere
 }
 $('#heroPresets').addEventListener('click',e=>{const b=e.target.closest('[data-p]');if(!b)return;hero.preset=b.dataset.p;$$('#heroPresets .pill').forEach(x=>x.setAttribute('aria-pressed',x===b));runHero()});
 $('#heroModels').addEventListener('change',e=>{if(e.target.id!=='heroModelSel')return;hero.model=e.target.value;runHero()});
@@ -890,20 +895,22 @@ $$('.tabs [data-tab]').forEach(b=>b.addEventListener('click',()=>showTab(b.datas
 async function runPg(){
   const req=buildRequest();const err=validate(req);
   const mm=models.find(m=>m.name===pg.model);
-  if(!mm||mm.status!=='ready'){$('#pgMeta').innerHTML=`<span style="color:var(--red)">404: model “${esc(pg.model)}” is not loaded. Loaded: ${models.filter(m=>m.status==='ready').map(m=>esc(m.name)).join(', ')||'none'}.</span>`;return}
+  if(!mm){$('#pgMeta').innerHTML=`<span style="color:var(--red)">404: model "${esc(pg.model)}" is not loaded. Loaded: ${models.map(m=>esc(m.name)).join(', ')||'none'}.</span>`;return}
   if(err){$('#pgMeta').innerHTML=`<span style="color:var(--red)">422 validation_error: ${esc(err)}</span>`;return}
-  const btn=$('#pgRun');btn.disabled=true;btn.textContent='Running…';
+  const btn=$('#pgRun');btn.disabled=true;btn.textContent=mm.status==='ready'?'Running…':'Loading model…';
   let r;try{r=await decide(pg.model,req.state,req.questions)}catch(e){btn.disabled=false;btn.textContent='Run';$('#pgMeta').innerHTML=`<span style="color:var(--red)">${e.status||'error'}: ${esc(e.message)}</span>`;return}
   (()=>{btn.disabled=false;btn.textContent='Run';pg.last=r;pg.lastReq=req;pg.fresh=true;
     $('#pgMeta').textContent=`200 OK in ${r.latency_ms} ms on ${DEVICE.kind}`;showTab(pg.tab==='json'||pg.tab==='curl'||pg.tab==='python'?pg.tab:'answers');logActivity(pg.model,r,req.questions)})();
+  if(mm.status!=='ready')refreshModels();   // the request above just loaded it; pick up the new status everywhere
 }
 $('#pgRun').addEventListener('click',runPg);
 document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&e.target.closest('#playground')){e.preventDefault();runPg()}});
 function fillPickers(){
-  const ready=models.filter(m=>m.status==='ready');
-  const opts=ready.map(m=>`<option value="${esc(m.name)}">${esc(m.name)}</option>`).join('')||'<option value="">No models loaded</option>';
-  const s=$('#pgModel');s.innerHTML=opts;if(ready.some(m=>m.name===pg.model))s.value=pg.model;else{pg.model=s.value}
-  $$('.bpick').forEach(p=>{const v=p.value;p.innerHTML=opts;if(ready.some(m=>m.name===v))p.value=v;else if(defaultModel)p.value=defaultModel});
+  // Every loaded model can be picked, not only 'ready' ones: with lazy loading (the default) a model only becomes
+  // ready after its first request, and this picker has to be usable before that first request is ever sent.
+  const opts=models.map(m=>`<option value="${esc(m.name)}">${esc(m.name)}${m.status!=='ready'&&m.backend!=='remote'?' (not loaded yet)':''}</option>`).join('')||'<option value="">No models loaded</option>';
+  const s=$('#pgModel');s.innerHTML=opts;if(models.some(m=>m.name===pg.model))s.value=pg.model;else{pg.model=s.value}
+  $$('.bpick').forEach(p=>{const v=p.value;p.innerHTML=opts;if(models.some(m=>m.name===v))p.value=v;else if(defaultModel)p.value=defaultModel});
 }
 
 /* activity */
