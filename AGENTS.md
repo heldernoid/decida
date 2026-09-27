@@ -49,7 +49,25 @@ Decida is a **runtime for System One (decision) models**: it loads models from H
 - Benches that use someone else's idea credit them on the page and in `THIRD_PARTY.md`.
 - Keep controls few. Put anything most people should not touch behind an "Advanced" section, with a sensible default.
 
-## 6. Definition of done
+## 6. AMD GPU (ROCm) — what is integrated and what to check
+
+AMD support is **live and tested** on Ryzen AI Max+ 395 (Radeon 8060S, gfx1151, Strix Halo APU) with Ubuntu and ROCm 10. The CUDA path in `runtime/device.py` handles AMD automatically because ROCm's HIP layer maps `torch.cuda.*` to the AMD GPU. `enc.py` detects ROCm builds via `torch.version.hip` and switches the ModernBERT encoder to `attn_implementation="eager"` — SDPA silently produces `hipErrorInvalidValue` on gfx1151.
+
+**Torch install for AMD.** The standard `uv sync` installs a CUDA-only torch wheel. AMD users need `stable.repo.amd.com/rocm/whl-next/` (AMD's index, which carries device-specific gfx kernels). The PyTorch-distributed ROCm 7.x wheels segfault on gfx1151; use ROCm 10. Full steps are in `README.md`'s AMD section; `--no-config` is required on the `uv pip install` call to bypass `pyproject.toml`'s `exclude-newer` pin (AMD packages lack upload timestamps and get filtered without it).
+
+**How to verify AMD works after a change:**
+
+1. Check torch sees the GPU: `uv run --no-sync python3 -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"`
+2. Run the wiring checks: `uv run --no-sync decida check helmo/DecidaBERT-large --device cuda` — all 14 should pass.
+3. Spot-check latency: a warm DecidaBERT-large request should be ~40–50 ms on gfx1151, vs ~370 ms on the same box's CPU. A large regression (e.g., back to CPU-level latency) means the ROCm wheel was silently replaced — `uv run` without `--no-sync` reinstalls the CUDA wheel.
+
+**Known issues and gotchas:**
+
+- `uv run` (without `--no-sync`) re-syncs the environment before every command, which reinstalls the CUDA-only wheel and clobbers the ROCm install silently. Always use `--no-sync` after the AMD torch install.
+- SDPA attention (`attn_implementation="sdpa"`) fails with `hipErrorInvalidValue` on gfx1151 during the encoder forward pass. The fix is in `enc.py`: use `eager` when `torch.version.hip` is set. Do not remove this branch.
+- Do not change `pyproject.toml`'s default `torch` dependency to a ROCm index. That would break NVIDIA CUDA users and CI.
+
+## 7. Definition of done
 
 - [ ] `make lint` (ruff and pyright) and `make test` (pytest and the JavaScript tests) pass.
 - [ ] New behaviour has tests, including the failure cases.
