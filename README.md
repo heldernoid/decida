@@ -110,8 +110,14 @@ We do not claim that DecidaBERT-large beats any other model: Laya's specialist c
 
 ## Hosted models
 
-Decida can forward requests to a hosted System One endpoint, listed by its URL. It is meant for benchmarking and comparison, and it is off unless you set an API key:
+Decida can forward requests to a hosted System One endpoint, listed by its URL. It is meant for benchmarking and comparison, and it is off unless you set an API key. `jev` is one of the default models, so it needs no setup beyond the key; to add a hosted model by hand instead, pass its URL like any other reference:
 
+```bash
+export TYPESAFE_API_KEY=sk-...
+decida serve --model jev="https://api.typesafe.ai/v1/systemone?model=jev-latest"
+```
+
+- A URL is detected as a hosted model automatically; no `--backend` flag is needed. Quote it, since it contains a `?`.
 - The key is read from the environment variable named in the settings (`TYPESAFE_API_KEY` by default) and is **never written to disk or logged**.
 - Spend is estimated from token counts and **capped** (`$1` by default, `--remote-budget-usd`). Requests stop when the cap is reached.
 - Use of a hosted service is under its own terms. Do not use a hosted model's outputs as training data.
