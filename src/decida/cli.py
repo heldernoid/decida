@@ -230,9 +230,14 @@ def data_cmd(action: str = typer.Argument(..., help="status | download"),
 
 @app.command("pull")
 def pull_cmd(refs: Annotated[list[str] | None, typer.Argument(help="Model refs to download (username/model-id, username/model-id:folder, or alias=ref). Leave out to pull every model in settings.json")] = None):
-    """Download models to the Hugging Face cache without loading them into RAM or VRAM."""
-    from decida.runtime.refs import is_url, local_dir
+    """Download models to the Hugging Face cache without loading them into RAM or VRAM.
 
+    This never touches ~/.decida/settings.json, so pulling a model does not by itself make `decida serve` serve
+    it; the command prints the exact next step to do that.
+    """
+    from decida.runtime.refs import alias_for, is_url, local_dir
+
+    from_settings = not refs
     if refs:
         pairs = [_spec_parts(r) for r in refs]
     else:
@@ -242,6 +247,7 @@ def pull_cmd(refs: Annotated[list[str] | None, typer.Argument(help="Model refs t
             typer.echo("no local models in settings.json; run `decida setup` to add some")
             raise typer.Exit(1)
     failed = 0
+    pulled: list[tuple[str, str]] = []   # (alias, ref) actually fetched, for the "how to serve this" hint below
     for alias, ref in pairs:
         label = f"{alias}={ref}" if alias else ref
         if is_url(ref):
@@ -254,6 +260,14 @@ def pull_cmd(refs: Annotated[list[str] | None, typer.Argument(help="Model refs t
             failed += 1
             continue
         typer.echo(f"{label}: {path}")
+        pulled.append((alias or alias_for(ref), ref))
+    if pulled:
+        if from_settings:
+            typer.echo("\nThese are already in settings.json; run `decida serve` to serve them.")
+        else:
+            flags = " ".join(f'--model {a}={r}' for a, r in pulled)
+            typer.echo(f"\nThese are not in settings.json yet. Serve them directly:\n  decida serve {flags}"
+                       f"\nor add them for every future `decida serve`:\n  decida setup " + " ".join(f'--add {a}={r}' for a, r in pulled))
     if failed:
         raise typer.Exit(1)
 
