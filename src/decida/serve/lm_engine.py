@@ -78,7 +78,8 @@ class LMEngine:
             device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
         td = {"auto": torch.float32 if device == "cpu" else torch.bfloat16, "float32": torch.float32, "bfloat16": torch.bfloat16, "float16": torch.float16}[dtype]
         tok = AutoTokenizer.from_pretrained(model_id, revision=revision)
-        model = AutoModelForCausalLM.from_pretrained(model_id, revision=revision, dtype=td).to(device).eval()  # pyright: ignore[reportArgumentType]  transformers' stub types the class-method call oddly
+        attn_impl = "eager" if getattr(torch.version, "hip", None) else "sdpa"
+        model = AutoModelForCausalLM.from_pretrained(model_id, revision=revision, dtype=td, attn_implementation=attn_impl).to(device).eval()  # pyright: ignore[reportArgumentType]  transformers' stub types the class-method call oddly
         logger.info("loaded %s on %s as %s", model_id, device, td)
         return cls(model, tok, device, max_input_tokens, model_id)
 
