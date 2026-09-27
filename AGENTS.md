@@ -63,7 +63,7 @@ AMD support is **live and tested** on Ryzen AI Max+ 395 (Radeon 8060S, gfx1151, 
 
 **Known issues and gotchas:**
 
-- `uv run` (without `--no-sync`) re-syncs the environment before every command, which reinstalls the CUDA-only wheel and clobbers the ROCm install silently. Always use `--no-sync` after the AMD torch install.
+- `uv run` (without `--no-sync`) re-syncs the environment before every command, which reinstalls the CUDA-only wheel and clobbers the ROCm install silently. Always use `--no-sync` after the AMD torch install. This includes `make lint` and `make test` — both invoke `uv run` internally and will silently swap torch back. On this machine, run lint and tests as `uv run --no-sync ruff check .`, `uv run --no-sync pyright`, `uv run --no-sync pytest` instead of via `make`.
 - SDPA attention (`attn_implementation="sdpa"`) fails with `hipErrorInvalidValue` on gfx1151 during the encoder forward pass. The fix is in `enc.py`: use `eager` when `torch.version.hip` is set. Do not remove this branch.
 - Do not change `pyproject.toml`'s default `torch` dependency to a ROCm index. That would break NVIDIA CUDA users and CI.
 
