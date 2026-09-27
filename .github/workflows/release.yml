@@ -1,0 +1,54 @@
+name: Release
+
+# Every push to main that passes CI bumps the patch version (0.1.0 -> 0.1.1) and pushes a tag for it; tag-release.yml
+# turns that tag into a GitHub Release. It runs only after the CI workflow finishes successfully on that commit, so
+# a broken push is never released. To cut a minor or major release instead, bump `version` in pyproject.toml
+# yourself in the commit you push; this workflow only auto-increments the patch number when the version line did
+# not already change from the previous commit.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      !contains(github.event.workflow_run.head_commit.message, '[skip ci]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v2
+      - name: Determine the next version
+        id: ver
+        run: |
+          current="$(grep -m1 '^version = ' pyproject.toml | sed -E 's/version = "(.*)"/\1/')"
+          previous="$(git show HEAD~1:pyproject.toml 2>/dev/null | grep -m1 '^version = ' | sed -E 's/version = "(.*)"/\1/' || echo "")"
+          if [ -n "$previous" ] && [ "$current" != "$previous" ]; then
+            next="$current"   # the pushed commit already bumped it by hand (a minor or major release)
+            echo "manual bump detected: $previous -> $next"
+          else
+            IFS='.' read -r major minor patch <<< "$current"
+            next="$major.$minor.$((patch + 1))"
+          fi
+          echo "version=$next" >> "$GITHUB_OUTPUT"
+      - name: Write the version and re-lock
+        run: |
+          sed -i -E "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" pyproject.toml
+          uv lock
+      - name: Commit, tag and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml uv.lock
+          git commit -m "chore: release v${{ steps.ver.outputs.version }} [skip ci]"
+          git tag "v${{ steps.ver.outputs.version }}"
+          git push origin HEAD:main
+          git push origin "v${{ steps.ver.outputs.version }}"   # tag-release.yml turns this into a GitHub Release
