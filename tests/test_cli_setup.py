@@ -170,3 +170,51 @@ def test_serve_with_an_empty_list_says_what_to_do(home, served):
     S.save(S.Settings(models=[]))
     r = runner.invoke(cli.app, ["serve"])
     assert r.exit_code == 1 and "decida setup" in r.output
+
+
+@pytest.fixture
+def pulled(monkeypatch):
+    """`local_dir` just records what it was asked to fetch, instead of touching the network."""
+    calls: list[str] = []
+
+    def fake(ref, revision=None):
+        calls.append(ref)
+        if "missing" in ref:
+            raise FileNotFoundError("repository not found")
+        return f"/cache/{ref}"
+    monkeypatch.setattr("decida.runtime.refs.local_dir", fake)
+    return calls
+
+
+def test_pull_with_no_args_downloads_every_local_model_in_settings(home, pulled):
+    S.save(S.default_settings())
+    r = runner.invoke(cli.app, ["pull"])
+    assert r.exit_code == 0
+    assert pulled == [m.ref for m in S.default_settings().models if not m.hosted]
+    assert "jev" not in r.output
+
+
+def test_pull_never_loads_a_model_into_a_torch_engine(home, pulled, monkeypatch):
+    """`pull` must go through refs.local_dir only; it must never touch Engine/store, which would use RAM or VRAM."""
+    import decida.runtime.store as store_mod
+    monkeypatch.setattr(store_mod, "ModelStore", None)  # any use would raise TypeError, proving pull never touches it
+    r = runner.invoke(cli.app, ["pull", "someone/one-model"])
+    assert r.exit_code == 0 and pulled == ["someone/one-model"]
+
+
+def test_pull_with_explicit_refs_ignores_settings(home, pulled):
+    r = runner.invoke(cli.app, ["pull", "someone/a", "alias=someone/b"])
+    assert r.exit_code == 0 and pulled == ["someone/a", "someone/b"]
+
+
+def test_pull_reports_a_failure_but_keeps_going(home, pulled):
+    r = runner.invoke(cli.app, ["pull", "someone/missing-model", "someone/ok"])
+    assert r.exit_code == 1
+    assert pulled == ["someone/missing-model", "someone/ok"]
+    assert "someone/missing-model" in r.output and "someone/ok" in r.output
+
+
+def test_pull_with_no_local_models_says_so(home, pulled):
+    S.save(S.Settings(models=[]))
+    r = runner.invoke(cli.app, ["pull"])
+    assert r.exit_code == 1

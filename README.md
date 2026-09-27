@@ -21,10 +21,18 @@ uv tool install git+https://github.com/heldernoid/decida     # a global `decida`
 decida serve                                                # then open http://127.0.0.1:8000
 ```
 
-The first run creates `~/.decida/settings.json` with a default set of models. Models are downloaded from Hugging Face the first time each one is used (about 6 GB for all of the defaults), and they load on their first request, so nothing is in memory until you use it. From a clone of this repository, use `uv sync` and `uv run decida serve` instead.
+The first run creates `~/.decida/settings.json` with a default set of models. By default each model is only downloaded, and then loaded into RAM or VRAM, on its **first request** to it (a curl, a bench, `decida check`), so a plain `decida serve` returns instantly and neither downloads nor loads a model until you actually use one. To fetch the weights ahead of time without loading them (handy on a slow link, or before going offline), without touching memory:
+
+```bash
+decida pull                                          # every model in settings.json, to the Hugging Face cache
+decida pull helmo/DecidaBERT-large helmo/Qwen3-0.6B  # only these
+```
+
+`--no-lazy` on `decida serve` instead downloads **and loads** every configured model before the server accepts requests; only use it if you have the RAM or VRAM for all of them at once, since Decida does not check that a model fits before loading it (see Settings, data and devices, below). On a small GPU, prefer `decida pull` up front and let each model still load lazily, on demand. From a clone of this repository, use `uv sync` and `uv run decida serve` instead.
 
 ```bash
 decida setup                          # add or remove models, or restore the defaults
+decida pull                           # download every configured model, without loading any of them
 decida serve --model decidabert=helmo/DecidaBERT-large --model qwen=helmo/Qwen3-0.6B    # or serve exactly these
 decida list                           # what a running server has loaded, and on which device
 decida check helmo/Qwen3-0.6B         # 14 wiring checks against a model
