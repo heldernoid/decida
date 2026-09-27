@@ -228,6 +228,36 @@ def data_cmd(action: str = typer.Argument(..., help="status | download"),
     typer.echo(json.dumps({"dataset": st.id, "ok": True, "present": st.present, "path": st.path, "parts": [p.model_dump() for p in st.parts]}))
 
 
+@app.command("pull")
+def pull_cmd(refs: Annotated[list[str] | None, typer.Argument(help="Model refs to download (username/model-id, username/model-id:folder, or alias=ref). Leave out to pull every model in settings.json")] = None):
+    """Download models to the Hugging Face cache without loading them into RAM or VRAM."""
+    from decida.runtime.refs import is_url, local_dir
+
+    if refs:
+        pairs = [_spec_parts(r) for r in refs]
+    else:
+        cfg, _ = _load_settings(create=True)
+        pairs = [(m.alias, m.ref) for m in cfg.models if not m.hosted]
+        if not pairs:
+            typer.echo("no local models in settings.json; run `decida setup` to add some")
+            raise typer.Exit(1)
+    failed = 0
+    for alias, ref in pairs:
+        label = f"{alias}={ref}" if alias else ref
+        if is_url(ref):
+            typer.echo(f"{label}: skipped (hosted model, nothing to download)")
+            continue
+        try:
+            path = local_dir(ref)
+        except Exception as exc:  # noqa: BLE001 - one bad ref should not stop the rest
+            typer.echo(f"error: {label}: {exc}", err=True)
+            failed += 1
+            continue
+        typer.echo(f"{label}: {path}")
+    if failed:
+        raise typer.Exit(1)
+
+
 @app.command("detect")
 def detect_cmd(ref: str = typer.Argument(..., help="HF id or local path")):
     """Show which backend would serve a model (reads file names and small configs only)."""
