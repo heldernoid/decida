@@ -68,6 +68,30 @@ def test_store_add_get_and_errors(tmp_path):
     assert s.default is None
 
 
+def test_unload_releases_the_device_cache_not_just_python_references(tmp_path, monkeypatch):
+    """Dropping the engine reference alone only frees memory into torch's own caching allocator, which keeps it for
+    reuse in-process rather than returning it to the OS/driver - nvidia-smi and Activity Monitor keep reporting the
+    old usage until the cache itself is released."""
+    (tmp_path / "config.json").write_text(json.dumps({"architectures": ["LlamaForCausalLM"]}))
+    import torch
+    calls = []
+    monkeypatch.setattr(torch.cuda, "empty_cache", lambda: calls.append("cuda"))
+    monkeypatch.setattr(torch.mps, "empty_cache", lambda: calls.append("mps"))
+
+    s = ModelStore("cpu")
+    s.add(str(tmp_path), name="cpu-model", device="cpu")
+    s.unload("cpu-model")
+    assert calls == [], "cpu has no device cache to release"
+
+    s.add(str(tmp_path), name="cuda-model", device="cuda")
+    s.unload("cuda-model")
+    assert calls == ["cuda"]
+
+    s.add(str(tmp_path), name="mps-model", device="mps")
+    s.unload("mps-model")
+    assert calls == ["cuda", "mps"]
+
+
 def test_alias_and_specs():
     assert alias_for("Qwen/Qwen3-0.6B") == "qwen3-0.6b"
     assert parse_model_specs("a=Qwen/X;org/y;/tmp/z") == [("a", "Qwen/X"), (None, "org/y"), (None, "/tmp/z")]
