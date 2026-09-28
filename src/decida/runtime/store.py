@@ -158,9 +158,18 @@ class ModelStore:
 
     def unload(self, name: str) -> None:
         e = self.get(name)
-        e.engine, e.status = None, "registered"
+        device, e.engine, e.status = e.device, None, "registered"
         import gc
         gc.collect()
+        # Dropping the Python references only frees memory into torch's own caching allocator, which keeps it for
+        # reuse within the process rather than returning it to the OS/driver - nvidia-smi, rocm-smi and Activity
+        # Monitor all keep reporting the old usage until the cache itself is released.
+        if device == "cuda":
+            import torch
+            torch.cuda.empty_cache()
+        elif device == "mps":
+            import torch
+            torch.mps.empty_cache()
 
     def remove(self, name: str) -> None:
         self.unload(name)
