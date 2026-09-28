@@ -19,6 +19,21 @@ test('single request: the phrase is the state, one question, every option descri
   assert.throws(() => C.toRequest('   ')); assert.throws(() => C.toRequest(''));
 });
 
+test('framing and criteria-style experiments: instructions and option wording change, options and state do not', () => {
+  const plain = C.toRequest('Ikea', 'single'), assoc = C.toRequest('Ikea', 'single', C.COPIES, 'assoc');
+  assert.equal(plain.questions.colour.instructions, C.FRAMES.plain);
+  assert.equal(assoc.questions.colour.instructions, C.FRAMES.assoc);
+  assert.notEqual(plain.questions.colour.instructions, assoc.questions.colour.instructions);
+  assert.equal(assoc.state, 'Ikea', 'the typed phrase is untouched, only the instructions change');
+
+  const described = C.toRequest('Ikea', 'single', C.COPIES, 'plain', 'described'), bare = C.toRequest('Ikea', 'single', C.COPIES, 'plain', 'bare');
+  assert.equal(described.questions.colour.criteria.red, 'red, the colour of tomatoes, fire trucks, roses, blood');
+  assert.equal(bare.questions.colour.criteria.red, 'red');
+  assert.deepEqual(Object.keys(bare.questions.colour.criteria), Object.keys(described.questions.colour.criteria), 'same colours, same order');
+
+  assert.throws(() => C.toRequest('x', 'single', C.COPIES, 'nope')); assert.throws(() => C.toRequest('x', 'single', C.COPIES, 'plain', 'nope'));
+});
+
 test('rotated request: the same question with the option list rotated evenly, same options, deterministic', () => {
   const r = C.toRequest('neon tokyo', 'rotated'), ids = Object.keys(r.questions), names = C.PALETTE.map(c => c.name);
   assert.deepEqual(ids, ['o0', 'o1', 'o2', 'o3']);

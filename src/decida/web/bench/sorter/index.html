@@ -26,7 +26,7 @@ table.cm td.diag{font-weight:600}
   <div class="stage" id="stage"><canvas id="cv" width="900" height="560" aria-label="Sorting scene"></canvas></div>
   <div class="controls">
     <label>Model <select id="model"></select></label>
-    <label title="How the candy's colour is described">Reading <select id="hints"><option value="rgb" selected>RGB numbers</option><option value="name">colour in words</option><option value="guide">RGB + hue + guide</option></select></label>
+    <label title="How the candy's colour is described">Reading <select id="hints"><option value="rgb">RGB numbers</option><option value="name" selected>colour in words</option><option value="guide">RGB + hue + guide</option></select></label>
     <label title="How much the hues of neighbouring colours overlap">Difficulty <select id="difficulty"><option value="easy">easy</option><option value="normal" selected>normal</option><option value="hard">hard</option></select></label>
     <label>Candies <select id="balls"><option>200</option><option selected>600</option><option>2000</option><option>5000</option><option>20000</option></select></label>
     <label title="Candies per request (the API takes up to 256 questions)">Batch <select id="batch"><option>16</option><option selected>64</option><option>256</option></select></label>
@@ -34,7 +34,6 @@ table.cm td.diag{font-weight:600}
     <label title="A number replays that exact pile; random picks a new one every run">Pile <input type="text" id="seed" value="random" size="8"></label>
     <button id="go">Start</button>
     <button id="new" class="ghost">New pile</button>
-    <button id="fs" class="ghost fsbtn" type="button" title="Show the stage full screen (Esc to leave)">Full screen</button>
   </div>
   <div id="msg"></div>
   <div id="report"></div>
@@ -351,7 +350,6 @@ function newPile() { M.resetMonitor(); S = newRun(); $('#report').className = ''
 $('#new').addEventListener('click', newPile);
 for (const id of ['difficulty', 'balls']) $('#' + id).addEventListener('change', () => { if (!S || !S.running) newPile(); }); // the pile depends on these
 for (const id of ['seed', 'hints', 'difficulty', 'balls', 'batch', 'animate']) if (QP.get(id)) $('#' + id).value = QP.get(id);
-$('#fs').addEventListener('click', () => { const st = $('#stage'); if (document.fullscreenElement) document.exitFullscreen(); else if (st.requestFullscreen) st.requestFullscreen(); });
 window.__sorter = { get S() { return S; }, G };
 S = newRun(); renderCM(); render(); requestAnimationFrame(frame);
 loadModels().then(() => { if (QP.get('auto')) start(); });

@@ -15,6 +15,7 @@ class Backend:
     ENCODER = "encoder"
     CLM = "clm"
     LM = "lm"
+    GLINER = "gliner"
     REMOTE = "remote"
     UNSUPPORTED = "unsupported"
 
@@ -132,6 +133,10 @@ def detect(ref: str, revision: str | None = None) -> Detection:
     if "rl_agent_config.json" in names:
         return Detection(Backend.ENCODER, "rl_agent_config.json present (Decida/Laya encoder checkpoint)", ref,
                          quality_mode="specialist", calibrated=True, license=license_)
+
+    if "encoder_config/config.json" in names and read("config.json").get("model_type") == "extractor":
+        return Detection(Backend.GLINER, "encoder_config/config.json and model_type 'extractor' (GLiNER2.5-Decide checkpoint)", ref,
+                         quality_mode="zero-shot", calibrated=False, license=license_)
 
     if "adapter_config.json" in names and "config.json" not in names:
         return Detection(Backend.UNSUPPORTED, "LoRA/PEFT adapter without a base config: not supported yet", ref, license=license_)

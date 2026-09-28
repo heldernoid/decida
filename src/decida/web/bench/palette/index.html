@@ -24,7 +24,6 @@
 .legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:12px;font:12.5px var(--mono);color:var(--ink2)}
 .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px;border:1px solid rgba(0,0,0,.15)}
 
-.card:fullscreen{height:100vh;border-radius:0;border:0}
 .credit{font-size:12px;color:var(--ink3,#7a8699);margin:10px 0 0}.credit a{color:inherit;text-decoration:underline}
 </style>
 </head>
@@ -44,12 +43,14 @@
   <div class="controls">
     <label>Model <select id="model"></select></label>
     <label title="auto: one question for encoder models, four rotated option orders averaged for language models (they read option letters and favour the first ones)">Method <select id="variant"><option value="auto" selected>auto</option><option value="single">one question</option><option value="rotated">averaged over 4 rotated orders</option></select></label>
-    <button id="fs" class="ghost fsbtn" type="button" title="Show the stage full screen (Esc to leave)">Full screen</button>
+    <label title="Experimental: whether the question asks for a literal look-alike or an association, for phrases like a brand or place that has no described colour">Framing <select id="frame"><option value="plain" selected>literal look-alike</option><option value="assoc">brand / place / concept</option></select></label>
+    <label title="Experimental: whether each colour option is described by what it looks like, or left as just the bare colour name">Criteria <select id="criteria"><option value="described" selected>described</option><option value="bare">bare name</option></select></label>
     <label title="Raise the probabilities to a power so a hesitant model reads decisively. The order never changes. auto: the gentlest contrast that lets the top colour reach 50%.">Contrast <select id="gamma"><option value="auto" selected>auto</option><option value="1">1 (raw)</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="6">6</option></select></label>
     <label title="Wait this long after you stop typing before asking">Pause <input type="number" id="debounce" value="180" min="0" max="2000" step="20"> ms</label>
   </div>
   <div id="msg"></div>
   <p class="note">The stripes are the model's probabilities for the question "which colour does this make you think of?". Every colour is described by what it looks like in real life ("red, the colour of tomatoes, fire trucks, roses, blood"): the description is what the model matches your text against, so a short list of described colours works far better than a long list of bare names. Language models read options as letters and favour the first ones, so for them the question is asked four times with the list rotated and the answers averaged. Small models are often right about which colours belong but unsure how much of each, so \"contrast\" sharpens the stripes (the order never changes). Requests are coalesced while you type, and only the newest answer is shown.</p>
+  <p class="note"><b>Framing</b> and <b>Criteria</b> are unproven experiments, not defaults: for phrases with no literal colour (a brand, a place, "Ikea", "Brazil"), the described-option wording may anchor the model to object look-alikes rather than association, and the plain instructions never ask for association at all. Try both against a few such phrases and compare; nothing here claims one is better until you've seen it.</p>
   <p class="credit">Idea: Matt DesLauriers (<a href="https://x.com/mattdesl/status/2100899669802963060" target="_blank" rel="noopener">@mattdesl</a>), "does Jev understand colour?". The design and code are our own.</p>
 </section>
 <section class="panel" id="side"></section>
@@ -62,7 +63,7 @@ const $ = s => document.querySelector(s);
 const QP = new URLSearchParams(location.search);
 $('#side').innerHTML = M.panelHTML();
 const say = (t, err) => { const m = $('#msg'); m.textContent = t || ''; m.className = t ? 'on' + (err ? ' err' : '') : ''; };
-const EXAMPLES = ['tomato', 'tomato on a vine', 'neon tokyo', '80s disco', 'quiet forest at dawn', 'a very sad birthday'];
+const EXAMPLES = ['tomato', 'tomato on a vine', 'neon tokyo', '80s disco', 'quiet forest at dawn', 'a very sad birthday', 'Ikea', 'Brazil'];
 $('#chips').innerHTML = EXAMPLES.map(e => `<button class="chip" type="button">${esc(e)}</button>`).join('');
 
 // one persistent bar per colour, so stripes glide to their new place and width instead of being redrawn
@@ -113,14 +114,14 @@ function display(req, raw) { // the monitor shows one question and a few answers
 }
 
 async function pump() {
-  const text = $('#q').value.trim(), model = $('#model').value, variant = methodFor(model);
+  const text = $('#q').value.trim(), model = $('#model').value, variant = methodFor(model), frame = $('#frame').value, criteria = $('#criteria').value;
   if (!text) { clearBars(); return; }
   if (!model) { say('Load a model first.', true); return; }
-  const key = `${model}|${variant}|${text}`;
+  const key = `${model}|${variant}|${frame}|${criteria}|${text}`;
   if (key === lastKey) return;
   if (inflight) { dirty = true; return; }  // coalesce: only the newest text is asked once the current request returns
   inflight = true; lastKey = key; say('');
-  const req = C.toRequest(text, variant), t0 = performance.now();
+  const req = C.toRequest(text, variant, C.COPIES, frame, criteria), t0 = performance.now();
   try {
     const r = await fetch('/v1/systemone', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model, ...req }) });
     const j = await r.json();
@@ -153,11 +154,14 @@ $('#q').addEventListener('input', schedule);
 $('#model').addEventListener('change', () => { lastKey = ''; pump(); });
 $('#gamma').addEventListener('change', () => { if (lastRaw) paint(lastRaw); });
 $('#variant').addEventListener('change', () => { lastKey = ''; pump(); });
+$('#frame').addEventListener('change', () => { lastKey = ''; pump(); });
+$('#criteria').addEventListener('change', () => { lastKey = ''; pump(); });
 $('#chips').addEventListener('click', e => { const b = e.target.closest('.chip'); if (!b) return; $('#q').value = b.textContent; $('#q').focus(); lastKey = ''; pump(); });
 if (QP.get('variant')) $('#variant').value = QP.get('variant');
+if (QP.get('frame')) $('#frame').value = QP.get('frame');
+if (QP.get('criteria')) $('#criteria').value = QP.get('criteria');
 if (QP.get('debounce')) $('#debounce').value = QP.get('debounce');
 if (QP.get('gamma')) $('#gamma').value = QP.get('gamma');
-$('#fs').addEventListener('click', () => { const st = $('#stage'); if (document.fullscreenElement) document.exitFullscreen(); else if (st.requestFullscreen) st.requestFullscreen(); });
 window.__palette = { S, C, get inflight() { return inflight; } };
 render();
 loadModels().then(() => { if (QP.get('q')) { $('#q').value = QP.get('q'); pump(); } });

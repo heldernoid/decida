@@ -20,7 +20,6 @@
     <label title="How much the option text gives away">Hints <select id="hints"><option value="full">full (safe/unsafe + Best)</option><option value="nobest">safe/unsafe only</option><option value="none">none (judge from distance)</option></select></label>
     <label title="Ask the model every N frames">Ask every <input type="number" id="every" value="6" min="1" max="60"> frames</label>
     <button id="go">Start run</button>
-    <button id="fs" class="ghost fsbtn" type="button" title="Show the stage full screen (Esc to leave)">Full screen</button>
   </div>
   <div id="msg"></div>
   <div id="report"></div>
@@ -169,7 +168,6 @@ if (QP.get('shield')) $('#shield').checked = QP.get('shield') === '1';
 if (QP.get('lockstep')) $('#lockstep').checked = QP.get('lockstep') === '1';
 if (QP.get('hints')) $('#hints').value = QP.get('hints');
 if (QP.get('every')) $('#every').value = QP.get('every');
-$('#fs').addEventListener('click', () => { const st = $('#stage'); if (document.fullscreenElement) document.exitFullscreen(); else if (st.requestFullscreen) st.requestFullscreen(); });
 window.__dino = { get S() { return S; }, G }; // for automated tests
 loadModels().then(() => { requestAnimationFrame(loop); if (QP.get('auto')) $('#go').click(); });
 </script>

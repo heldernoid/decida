@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decida bench: Live fraud gate</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2024%2024%22%3E%3Crect%20x=%221%22%20y=%2216%22%20width=%224%22%20height=%225%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%227%22%20y=%223%22%20width=%224%22%20height=%2218%22%20rx=%221%22%20fill=%22%233a34d2%22/%3E%3Crect%20x=%2213%22%20y=%2213%22%20width=%224%22%20height=%228%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%2219%22%20y=%2218%22%20width=%224%22%20height=%223%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../common/bench.css">
+<style>
+main{max-width:1400px;grid-template-columns:minmax(0,1.1fr) minmax(280px,1fr)}
+.ticker{overflow:auto;max-height:74vh;display:flex;flex-direction:column-reverse}
+.row{display:grid;grid-template-columns:56px 1fr auto auto;gap:10px;align-items:center;padding:8px;border-bottom:1px solid var(--line);font-size:13px}
+.row.pending{opacity:.5}
+.row .badge{font:700 11px var(--mono);padding:3px 8px;border-radius:99px;text-transform:uppercase}
+.row .badge.approve{background:var(--green);color:#fff}
+.row .badge.flag{background:var(--amber);color:#fff}
+.row .badge.decline{background:var(--red);color:#fff}
+.row .badge.pending{background:var(--surface);color:var(--ink3)}
+.row .mark{width:16px;text-align:center}
+.row .mark.ok{color:var(--green)}
+.row .mark.bad{color:var(--red)}
+.row .amt{font-family:var(--mono);text-align:right}
+.headline{display:flex;gap:22px;flex-wrap:wrap;margin:2px 0 14px}
+.headline .big small{display:block;color:var(--ink3);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+.headline .big b{font:700 26px var(--mono)}
+</style>
+</head>
+<body>
+<header><a href="/">&larr; Decida</a><a href="/testbench">Testbench</a><h1>Live fraud gate</h1><span style="color:var(--ink3);font-size:13px">one transaction at a time, one decision before the next lands — latency is the whole point</span></header>
+<main>
+<section class="panel">
+  <div class="controls" style="margin-top:0">
+    <label>Model <select id="model"></select></label>
+    <label>Arrives every <select id="interval"><option value="150">150 ms</option><option value="400" selected>400 ms</option><option value="900">900 ms</option><option value="0">as fast as possible</option></select></label>
+    <button id="go">Start</button>
+  </div>
+  <div id="msg"></div>
+  <div class="headline" id="headline"></div>
+  <div class="ticker" id="ticker"><div class="empty" style="color:var(--ink3);font-size:13.5px">Press Start; transactions will arrive one at a time.</div></div>
+</section>
+<section class="panel" id="side"></section>
+</main>
+<script type="module">
+import * as F from './transactions.js';
+import { esc, panelHTML, update as monUpdate } from '../common/monitor.js';
+const $ = s => document.querySelector(s), QP = new URLSearchParams(location.search);
+const say = (t, err) => { const m = $('#msg'); m.textContent = t || ''; m.className = t ? 'on' + (err ? ' err' : '') : ''; };
+async function api(path, init) { const r = await fetch(path, init), j = await r.json().catch(() => ({})); if (!r.ok) throw new Error((j.error && j.error.message) || j.detail || r.statusText); return j; }
+
+$('#side').innerHTML = panelHTML();
+const mon = { lat: [], tokens: 0, counts: {}, countsLabel: 'verdict', done: 0, last: null, rate: [], rateLabel: 'transactions / second' };
+
+async function loadModels() {
+  try {
+    const d = await api('/v1/models');
+    const ready = d.models.filter(m => m.status === 'ready' || m.status === 'registered');
+    $('#model').innerHTML = ready.map(m => `<option value="${esc(m.name)}">${esc(m.name)} (${m.backend})</option>`).join('');
+    const want = QP.get('model') || d.default;
+    if (ready.some(m => m.name === want)) $('#model').value = want;
+    if (!ready.length) say('No models loaded. Start the server with --model.', true);
+  } catch (e) { say('Cannot reach the Decida server: ' + e.message, true); }
+}
+
+// The severity that matters is asymmetric: an actually-risky transaction the model waved through (dangerMissed)
+// is a real loss; a legitimate one it merely hedged on (overCautious) is only friction. A flat "accuracy vs
+// oracle" number treats both the same, so both are shown separately instead.
+let done = 0, dangerMissed = 0, overCautious = 0, running = false;
+
+function headline() {
+  const lat = mon.lat, p50 = lat.length ? [...lat].sort((a, b) => a - b)[Math.floor(lat.length / 2)] : 0;
+  $('#headline').innerHTML = `
+    <div class="big"><small>Decided</small><b>${done}/${F.TRANSACTIONS.length}</b></div>
+    <div class="big${dangerMissed ? ' bad' : ''}"><small>Risky, waved through</small><b>${dangerMissed}</b></div>
+    <div class="big"><small>Legit, held back</small><b>${overCautious}</b></div>
+    <div class="big"><small>Last latency</small><b>${lat.length ? Math.round(lat[lat.length - 1]) : 0} ms</b></div>
+    <div class="big"><small>p50 latency</small><b>${Math.round(p50)} ms</b></div>`;
+}
+const SEVERITY = { approve: 0, flag: 1, decline: 2 };
+
+function addRow(tx, id) {
+  const row = document.createElement('div');
+  row.className = 'row pending'; row.id = `row${id}`;
+  row.innerHTML = `<span class="mark"></span><span>${esc(tx.merchant)} — ${esc(tx.category)}</span><span class="amt">$${tx.amount.toLocaleString()}</span><span class="badge pending">…</span>`;
+  $('#ticker').prepend(row);
+}
+function settleRow(id, choice, ok) {
+  const row = document.getElementById(`row${id}`); if (!row) return;
+  row.className = 'row';
+  row.querySelector('.mark').innerHTML = ok ? '✓' : '✗';
+  row.querySelector('.mark').className = 'mark ' + (ok ? 'ok' : 'bad');
+  const badge = row.querySelector('.badge'); badge.className = 'badge ' + choice; badge.textContent = choice;
+}
+
+let rateBucket = 0, rateTimer = null;
+function tickRate() { mon.rate.push(rateBucket); rateBucket = 0; if (mon.rate.length > 120) mon.rate.shift(); }
+
+$('#go').addEventListener('click', async () => {
+  if (running) return;
+  running = true; $('#go').disabled = true; say('');
+  done = 0; dangerMissed = 0; overCautious = 0; mon.lat = []; mon.tokens = 0; mon.counts = {}; mon.done = 0; mon.last = null; mon.rate = [];
+  $('#ticker').innerHTML = ''; headline(); monUpdate(mon);
+  clearInterval(rateTimer); rateTimer = setInterval(tickRate, 1000);
+  const model = $('#model').value, gap = +$('#interval').value;
+
+  for (let i = 0; i < F.TRANSACTIONS.length; i++) {
+    const tx = F.TRANSACTIONS[i];
+    addRow(tx, i);
+    const req = F.toRequest(tx);
+    try {
+      const t0 = performance.now();
+      const raw = await api('/v1/systemone', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model, ...req }) });
+      const ms = raw.latency_ms ?? (performance.now() - t0);
+      const answer = raw.answers.tx, oracle = F.oracle(tx), ok = answer.choice === oracle;
+      settleRow(i, answer.choice, ok);
+      if (SEVERITY[answer.choice] < SEVERITY[oracle]) dangerMissed++;   // treated something riskier than it acted
+      else if (SEVERITY[answer.choice] > SEVERITY[oracle]) overCautious++; // treated something more cautiously than needed
+      done++; rateBucket++;
+      mon.lat.push(ms); mon.tokens += raw.usage.input_tokens; mon.counts[answer.choice] = (mon.counts[answer.choice] || 0) + 1; mon.done = done;
+      mon.last = { subject: `${tx.merchant} — $${tx.amount}`, probs: answer.probabilities, choice: answer.choice, confidence: answer.confidence,
+        ms, oracle, request: { state: req.state, questions: req.questions }, raw };
+      headline(); monUpdate(mon);
+    } catch (e) {
+      settleRow(i, 'decline', false);
+      say('A request failed: ' + e.message, true);
+    }
+    if (gap) await new Promise(r => setTimeout(r, gap));
+  }
+  clearInterval(rateTimer);
+  running = false; $('#go').disabled = false;
+  say(`Done: ${done} transactions. ${dangerMissed} risky transaction${dangerMissed === 1 ? '' : 's'} waved through, ${overCautious} legitimate one${overCautious === 1 ? '' : 's'} held back for no reason.`);
+});
+
+loadModels();
+</script>
+</body>
+</html>

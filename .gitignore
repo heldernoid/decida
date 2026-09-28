@@ -13,3 +13,4 @@ artifacts/
 dist/
 *.egg-info/
 node_modules/
+spaces/

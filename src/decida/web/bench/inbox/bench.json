@@ -1,0 +1,1 @@
+{"title": "Inbox", "description": "100 emails pour in, 75 real and 25 spam (a known, fixed split). Every message is one yes/no question, answered in a single batch, then filed into Inbox or Junk as it arrives. Open one to read it: a link is disabled if its own address looks doubtful, independently of what the model said.", "tags": ["batching", "accuracy", "classification"]}

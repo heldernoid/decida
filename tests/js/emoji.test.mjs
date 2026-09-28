@@ -11,6 +11,16 @@ test('emoji set: unique characters and names, within the API limit, every name i
   for (const need of ['glove', 'scarf', 'socks', 'hiking boot', 'snowflake', 'umbrella']) assert.ok(E.EMOJIS.some(e => e.name === need), need);
 });
 
+test('country flags: all 193 UN member states, a separate set that does not touch EMOJIS or its counts', () => {
+  assert.equal(E.FLAGS.length, 193);
+  assert.equal(new Set(E.FLAGS.map(f => f.char)).size, E.FLAGS.length, 'duplicate flag');
+  assert.equal(new Set(E.FLAGS.map(f => f.name)).size, E.FLAGS.length, 'duplicate name');
+  for (const f of E.FLAGS) { assert.match(f.name, /^[a-z][a-z -]*$/, f.name); assert.equal([...f.char].length, 2, `${f.name} is not two regional-indicator symbols`); }
+  assert.ok(E.FLAGS.every(f => E.EMOJIS.every(e => e.char !== f.char)), 'flags are not already in EMOJIS');
+  assert.ok(E.FLAGS.length <= E.MAX_QUESTIONS && E.FLAGS.length <= E.MAX_CHOICE_OPTIONS, '"only flags" fits either strategy in one request');
+  for (const need of ['brazil flag', 'japan flag', 'france flag', 'united states flag', 'united kingdom flag']) assert.ok(E.FLAGS.some(f => f.name === need), need);
+});
+
 test('subset is deterministic, spread across the list, and never larger than asked', () => {
   const a = E.subset(60), b = E.subset(60);
   assert.deepEqual(a, b); assert.equal(a.length, 60); assert.equal(new Set(a.map(e => e.char)).size, 60);
@@ -28,6 +38,26 @@ test('request: the query is the state, one short statement per emoji, ids e0.., 
   assert.equal(r2.questions[`e${oct}`].instructions, 'An octopus is an example of this.');
   assert.throws(() => E.toRequest('', items)); assert.throws(() => E.toRequest('x', []));
   assert.throws(() => E.toRequest('x', Array.from({ length: 257 }, () => items[0])));
+});
+
+test('choice strategy: one question over every emoji, and scores read back by name', () => {
+  const items = E.subset(40), r = E.toRequestChoice('  things you can wear in winter ', items);
+  assert.equal(r.state, 'things you can wear in winter');
+  assert.deepEqual(Object.keys(r.questions), ['pick']);
+  assert.equal(r.questions.pick.type, 'choice');
+  assert.deepEqual(Object.keys(r.questions.pick.criteria), items.map(e => e.name));
+  assert.ok(Object.values(r.questions.pick.criteria).every(v => v === null));
+  assert.throws(() => E.toRequestChoice('', items)); assert.throws(() => E.toRequestChoice('x', [items[0]]));
+  assert.throws(() => E.toRequestChoice('x', Array.from({ length: 256 }, () => items[0])));
+  assert.throws(() => E.toRequestChoice('x', [items[0], items[0]]), 'duplicate names are rejected');
+
+  const probabilities = Object.fromEntries(items.map((e, i) => [e.name, i === 3 ? 0.7 : 0.01]));
+  const list = E.scoresFromChoice({ pick: { choice: items[3].name, probabilities } }, items);
+  assert.equal(list.length, items.length);
+  assert.equal(list[3].p, 0.7); assert.equal(list[3].index, 3); assert.equal(list[3].name, items[3].name);
+  assert.equal(list[0].p, 0.01);
+  const sparse = E.scoresFromChoice({ pick: { choice: items[0].name, probabilities: { [items[0].name]: 1.5 } } }, items);
+  assert.equal(sparse[0].p, 1, 'clamped'); assert.equal(sparse[1].p, 0, 'missing entries default to 0');
 });
 
 test('scores, matches and targets', () => {

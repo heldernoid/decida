@@ -57,8 +57,5 @@ main.wide #side .mon-g{margin-top:0}
 .mon-g:first-child{margin-top:0}
 .mon-g>h2:first-child{margin-top:0}
 @media (min-width:900px){main.wide #side .mon-g:first-child .stats{grid-template-columns:repeat(3,1fr)}}
-.fsbtn{margin-left:auto}
-.stage:fullscreen{display:flex;align-items:center;justify-content:center;background:var(--bg);border:0;border-radius:0;box-shadow:none;position:relative}
-.stage:fullscreen canvas{width:min(100vw,calc(100vh * var(--aspect, 1.607)));height:auto}
 /* keep a canvas stage within the window height so its controls stay in view (the palette card sizes itself) */
-main.wide .stage:has(#cv):not(:fullscreen){max-width:calc(var(--stagevh, 84) * 1vh * var(--aspect, 1.607));margin-left:auto;margin-right:auto}
+main.wide .stage:has(#cv){max-width:calc(var(--stagevh, 84) * 1vh * var(--aspect, 1.607));margin-left:auto;margin-right:auto}

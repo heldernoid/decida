@@ -37,7 +37,6 @@
     <label title="Pause the game until each answer arrives: takes latency out of the picture"><input type="checkbox" id="lockstep"> Lockstep</label>
     <label>Seconds <input type="number" id="seconds" value="60" min="5" max="600"></label>
     <button id="go">Start run</button>
-    <button id="fs" class="ghost fsbtn" type="button" title="Show the stage full screen (Esc to leave)">Full screen</button>
   </div>
   <div id="msg"></div>
   <div id="report"></div>
@@ -192,7 +191,6 @@ $('#thr').addEventListener('input', () => { $('#thrv').textContent = (+$('#thr')
 for (const id of ['seed', 'variant', 'every', 'seconds', 'thr']) if (QP.get(id)) { $('#' + id).value = QP.get(id); }
 if (QP.get('lockstep')) $('#lockstep').checked = QP.get('lockstep') === '1';
 $('#thrv').textContent = (+$('#thr').value).toFixed(2);
-$('#fs').addEventListener('click', () => { const st = $('#stage'); if (document.fullscreenElement) document.exitFullscreen(); else if (st.requestFullscreen) st.requestFullscreen(); });
 window.__flappy = { get S() { return S; }, F };
 S = newRun(); render(); requestAnimationFrame(frame);
 loadModels().then(() => { if (QP.get('auto')) $('#go').click(); });

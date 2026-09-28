@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decida bench: Inbox</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2024%2024%22%3E%3Crect%20x=%221%22%20y=%2216%22%20width=%224%22%20height=%225%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%227%22%20y=%223%22%20width=%224%22%20height=%2218%22%20rx=%221%22%20fill=%22%233a34d2%22/%3E%3Crect%20x=%2213%22%20y=%2213%22%20width=%224%22%20height=%228%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3Crect%20x=%2219%22%20y=%2218%22%20width=%224%22%20height=%223%22%20rx=%221%22%20fill=%22%237b839e%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../common/bench.css">
+<style>
+main{max-width:1500px;grid-template-columns:200px minmax(0,.9fr) minmax(0,1fr) minmax(260px,.9fr)}
+@media (max-width:1200px){main{grid-template-columns:200px 1fr 1fr}main .mon{grid-column:1/-1}}
+@media (max-width:900px){main{grid-template-columns:1fr}}
+.side .controls{display:flex;flex-direction:column;align-items:stretch;gap:4px}
+.side .controls label{display:flex;flex-direction:column;align-items:stretch;gap:4px}
+.side .controls select{width:100%;max-width:100%}
+.folders{display:flex;flex-direction:column;gap:4px}
+.folder{display:flex;justify-content:space-between;padding:8px 10px;border-radius:7px;cursor:pointer;font-size:13.5px}
+.folder:hover{background:var(--surface)}
+.folder.on{background:var(--acc);color:var(--acc-ink)}
+.folder b{font-family:var(--mono)}
+.list{overflow:auto;max-height:70vh}
+.mail{display:flex;gap:8px;align-items:flex-start;padding:9px 8px;border-bottom:1px solid var(--line);cursor:pointer;font-size:13px}
+.mail:hover{background:var(--surface)}
+.mail.on{background:var(--surface)}
+.mail .dot{flex:none;width:9px;height:9px;border-radius:50%;margin-top:4px}
+.mail .dot.ok{background:var(--green)}
+.mail .dot.bad{background:var(--red)}
+.mail .meta{min-width:0}
+.mail .from{font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mail .subj{color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mail .p{font-family:var(--mono);color:var(--ink3);flex:none;font-size:11px;margin-left:auto}
+.reader{font-size:14px}
+.reader .from{font-weight:600}
+.reader .subj{font-size:16px;font-weight:700;margin:4px 0 10px}
+.reader .body{white-space:pre-wrap;color:var(--ink2);line-height:1.6}
+.linkrow{margin-top:10px}
+.linkrow a{display:inline-block}
+.linkrow .disabled{color:var(--red);text-decoration:line-through;cursor:not-allowed}
+.linkrow .why{display:block;font-size:12px;color:var(--red);margin-top:2px}
+.empty{color:var(--ink3);font-size:13.5px;padding:20px 8px}
+</style>
+</head>
+<body>
+<header><a href="/">&larr; Decida</a><a href="/testbench">Testbench</a><h1>Inbox</h1><span style="color:var(--ink3);font-size:13px">100 emails, 75 real and 25 spam; one yes/no question per email, in a single batch</span></header>
+<main>
+<section class="panel side">
+  <div class="controls" style="margin-top:0">
+    <label>Model <select id="model"></select></label>
+  </div>
+  <button id="go" style="margin-top:10px;width:100%">Start</button>
+  <div id="msg"></div>
+  <h2 style="margin-top:16px">Folders</h2>
+  <div class="folders">
+    <div class="folder on" data-f="inbox"><span>Inbox</span><b id="cInbox">0</b></div>
+    <div class="folder" data-f="junk"><span>Junk</span><b id="cJunk">0</b></div>
+  </div>
+  <div id="report" style="margin-top:14px"></div>
+  <p class="note">Green/red dots show whether the model’s own verdict matched the known truth for that email — visible once sorting finishes, not while it is running.</p>
+</section>
+<section class="panel">
+  <div class="list" id="list"><div class="empty">Press Start to let the mail arrive.</div></div>
+</section>
+<section class="panel">
+  <div class="reader" id="reader"><div class="empty">Select an email to read it.</div></div>
+</section>
+<section class="panel mon" id="side"></section>
+</main>
+<script type="module">
+import * as M from './mail.js';
+import { esc, panelHTML, update as monUpdate } from '../common/monitor.js';
+const $ = s => document.querySelector(s), QP = new URLSearchParams(location.search);
+$('#side').innerHTML = panelHTML();
+const mon = { lat: [], tokens: 0, counts: {}, countsLabel: 'verdict', done: 0, last: null };
+const say = (t, err) => { const m = $('#msg'); m.textContent = t || ''; m.className = t ? 'on' + (err ? ' err' : '') : ''; };
+async function api(path, init) { const r = await fetch(path, init), j = await r.json().catch(() => ({})); if (!r.ok) throw new Error((j.error && j.error.message) || j.detail || r.statusText); return j; }
+
+async function loadModels() {
+  try {
+    const d = await api('/v1/models');
+    const ready = d.models.filter(m => m.status === 'ready' || m.status === 'registered');
+    $('#model').innerHTML = ready.map(m => `<option value="${esc(m.name)}">${esc(m.name)} (${m.backend})</option>`).join('');
+    const want = QP.get('model') || d.default;
+    if (ready.some(m => m.name === want)) $('#model').value = want;
+    if (!ready.length) say('No models loaded. Start the server with --model.', true);
+  } catch (e) { say('Cannot reach the Decida server: ' + e.message, true); }
+}
+
+let sorted = null, folder = 'inbox', opened = null, order = [];
+
+function renderFolders() {
+  $('#cInbox').textContent = sorted ? sorted.inbox.length : 0;
+  $('#cJunk').textContent = sorted ? sorted.junk.length : 0;
+}
+
+function renderList() {
+  const items = sorted ? sorted[folder] : [];
+  if (!items.length) { $('#list').innerHTML = `<div class="empty">${sorted ? 'Nothing here yet.' : 'Press Start to let the mail arrive.'}</div>`; return; }
+  $('#list').innerHTML = items.map(e => {
+    const dot = sorted.finished ? `<span class="dot ${e.spam === (e.p >= 0.5) ? 'ok' : 'bad'}"></span>` : '';
+    return `<div class="mail${opened === e ? ' on' : ''}" data-id="${e.id}">${dot}<div class="meta"><div class="from">${esc(e.from)}</div><div class="subj">${esc(e.subject)}</div></div><span class="p">${e.p.toFixed(2)}</span></div>`;
+  }).join('');
+}
+
+function renderReader() {
+  if (!opened) { $('#reader').innerHTML = '<div class="empty">Select an email to read it.</div>'; return; }
+  const e = opened;
+  let linksHtml = '';
+  for (const l of e.links || []) {
+    const why = M.suspiciousLink(l.href, l.text);
+    linksHtml += why
+      ? `<div class="linkrow"><span class="disabled" title="link disabled">${esc(l.text)}</span><span class="why">Link disabled: ${esc(why)}.</span></div>`
+      : `<div class="linkrow"><a href="${esc(l.href)}" target="_blank" rel="noopener">${esc(l.text)}</a></div>`;
+  }
+  $('#reader').innerHTML = `<div class="from">${esc(e.from)}</div><div class="subj">${esc(e.subject)}</div><div class="body">${esc(e.body)}</div>${linksHtml}`;
+}
+
+// The monitor's "last request" for whichever email is open: sliced out of the one real batch call, so the shown
+// latency is honestly labelled as the whole batch's, not implied to be this one email's own round trip.
+function showInMonitor(e) {
+  const qid = `m${e.id}`;
+  mon.last = {
+    subject: e.subject, probs: { true: e.p, false: 1 - e.p }, choice: e.p >= 0.5 ? 'true' : 'false',
+    confidence: Math.abs(2 * e.p - 1), ms: lastRaw.latency_ms, msLabel: '(batch of 100)', oracle: String(e.spam),
+    request: { state: lastReq.state, questions: { [qid]: lastReq.questions[qid] } },
+    raw: { model: lastRaw.model, answers: { [qid]: lastRaw.answers[qid] }, usage: lastRaw.usage, latency_ms: lastRaw.latency_ms },
+  };
+  monUpdate(mon);
+}
+
+$('#list').addEventListener('click', ev => {
+  const row = ev.target.closest('.mail'); if (!row) return;
+  opened = sorted[folder].find(e => String(e.id) === row.dataset.id);
+  renderList(); renderReader();
+  if (opened) showInMonitor(opened);
+});
+document.querySelectorAll('.folder').forEach(f => f.addEventListener('click', () => {
+  folder = f.dataset.f;
+  document.querySelectorAll('.folder').forEach(x => x.classList.toggle('on', x === f));
+  renderList();
+}));
+
+function report() {
+  if (!sorted) return;
+  const { accuracy, truePos, trueNeg, falsePos, falseNeg } = sorted;
+  $('#report').innerHTML = `<div class="stats" style="grid-template-columns:1fr 1fr">
+    <div class="stat"><small>Accuracy</small><b>${(accuracy * 100).toFixed(0)}%</b></div>
+    <div class="stat${falsePos ? ' bad' : ''}"><small>Real mail → junk</small><b>${falsePos}</b></div>
+    <div class="stat${falseNeg ? ' bad' : ''}"><small>Spam → inbox</small><b>${falseNeg}</b></div>
+    <div class="stat"><small>Correct</small><b>${truePos + trueNeg}/100</b></div>
+    </div>`;
+}
+
+let lastReq = null, lastRaw = null;
+
+$('#go').addEventListener('click', async () => {
+  $('#go').disabled = true; say(''); sorted = null; opened = null; renderFolders(); renderList(); renderReader(); $('#report').innerHTML = '';
+  mon.lat = []; mon.tokens = 0; mon.counts = {}; mon.done = 0; mon.last = null; monUpdate(mon);
+  const items = M.EMAILS.map((e, id) => ({ ...e, id }));
+  const req = M.toRequest(items);
+  let answers;
+  try {
+    const model = $('#model').value;
+    const t0 = performance.now();
+    lastRaw = await api('/v1/systemone', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model, state: 'One hundred unread emails.', ...req }) });
+    lastReq = { state: 'One hundred unread emails.', ...req };
+    answers = lastRaw.answers;
+    say(`Sorted 100 emails in ${(performance.now() - t0).toFixed(0)} ms (one batched request).`);
+  } catch (e) { say('Request failed: ' + e.message, true); $('#go').disabled = false; return; }
+  mon.lat = [lastRaw.latency_ms]; mon.tokens = lastRaw.usage.input_tokens;
+  sorted = M.sortMail(items, answers);
+  sorted.finished = false;
+  order = items; // reveal in the order emails were authored, i.e. "arrival" order
+  // sortMail's inbox/junk arrays hold *copies* (each with .p attached), not the same objects as `items` or `order` -
+  // so which bucket an id landed in, and the enriched (with .p) copy to render, both have to be looked up by id.
+  const bucketOf = new Map(), byId = new Map();
+  sorted.inbox.forEach(e => { bucketOf.set(e.id, 'inbox'); byId.set(e.id, e); });
+  sorted.junk.forEach(e => { bucketOf.set(e.id, 'junk'); byId.set(e.id, e); });
+  sorted.inbox = []; sorted.junk = [];
+  let i = 0;
+  const tick = () => {
+    if (i >= order.length) { sorted.finished = true; $('#go').disabled = false; report(); renderList(); mon.done = order.length; monUpdate(mon); return; }
+    const plain = order[i++], enriched = byId.get(plain.id), bucket = bucketOf.get(plain.id);
+    sorted[bucket].push(enriched);
+    const verdict = enriched.p >= 0.5 ? 'spam' : 'not spam';
+    mon.counts[verdict] = (mon.counts[verdict] || 0) + 1; mon.done = i;
+    renderFolders(); renderList(); monUpdate(mon);
+    setTimeout(tick, 45);
+  };
+  tick();
+});
+
+loadModels();
+</script>
+</body>
+</html>
