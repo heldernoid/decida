@@ -262,6 +262,39 @@ def test_ps_is_a_table_with_the_default_model_starred(home, monkeypatch):
     assert not qwen.startswith("*") and "qwen" in qwen
 
 
+def test_unload_with_no_server_running_gives_a_clear_error_not_a_traceback(home):
+    r = runner.invoke(cli.app, ["unload", "decidabert", "--url", "http://127.0.0.1:1"])
+    assert r.exit_code == 1
+    assert r.exception is None or isinstance(r.exception, SystemExit), "a connection failure must not raise past the CLI"
+    assert "decida serve" in r.output
+
+
+def test_unload_success_and_reports_the_model_error_on_an_unknown_alias(home, monkeypatch):
+    import io
+    import urllib.error
+    import urllib.request
+
+    class FakeResponse(io.BytesIO):
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req):
+        assert req.get_method() == "DELETE"
+        if req.full_url.endswith("/nope"):
+            body = json.dumps({"error": {"message": "unknown model 'nope'; available: ['decidabert']"}}).encode()
+            raise urllib.error.HTTPError(req.full_url, 404, "Not Found", None, io.BytesIO(body))
+        return FakeResponse(json.dumps({"removed": "decidabert"}).encode())
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    ok = runner.invoke(cli.app, ["unload", "decidabert"])
+    assert ok.exit_code == 0 and "unloaded decidabert" in ok.output
+
+    bad = runner.invoke(cli.app, ["unload", "nope"])
+    assert bad.exit_code == 1 and "unknown model" in bad.output
+
+
 @pytest.fixture
 def empty_hf_cache(monkeypatch):
     """`scan_cache_dir()` reads the real machine's Hugging Face cache; stub it so `list` tests are not at the
