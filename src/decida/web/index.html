@@ -84,7 +84,7 @@ code,pre,.mono{font-family:var(--mono);font-size:.86em}
 /* one section per page: the choice is made in <head> before anything paints (see the first script) */
 [data-page]{display:none}
 html:not([data-p]) [data-page]{display:revert}
-html[data-p="home"] [data-page="home"],html[data-p="models"] [data-page="models"],html[data-p="playground"] [data-page="playground"],html[data-p="under-the-hood"] [data-page="under-the-hood"],html[data-p="testbench"] [data-page="testbench"],html[data-p="api"] [data-page="api"]{display:revert}
+html[data-p="home"] [data-page="home"],html[data-p="models"] [data-page="models"],html[data-p="playground"] [data-page="playground"],html[data-p="testbench"] [data-page="testbench"],html[data-p="api"] [data-page="api"]{display:revert}
 .strip nav a[aria-current=page]{background:var(--surface);color:var(--ink);font-weight:600}
 @media (max-width:1120px){.strip .spacer{margin-left:auto}.strip .wrap{flex-wrap:wrap;height:auto;padding-top:8px;padding-bottom:8px}.strip nav{order:9;width:100%;margin-left:0;overflow-x:auto;padding-bottom:2px}}
 @media (max-width:640px){.hide-sm{display:none!important}}
@@ -263,72 +263,6 @@ pre.code .k{color:var(--code-key)}pre.code .s{color:var(--code-str)}pre.code .c{
 .activity li .r{text-align:right;font-variant-numeric:tabular-nums}
 .muted{color:var(--ink3)}
 
-/* under the hood */
-.flow{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:0;counter-reset:st;position:relative}
-@media (max-width:960px){.flow{grid-template-columns:repeat(2,minmax(0,1fr));gap:0}}
-@media (max-width:520px){.flow{grid-template-columns:minmax(0,1fr)}}
-.st{padding:16px 16px 18px;border-right:1px solid var(--line2);position:relative;cursor:pointer;background:transparent;border-top:0;border-left:0;border-bottom:0;text-align:left;font:inherit;color:inherit}
-.st:last-child{border-right:0}
-@media (max-width:960px){.st{border-bottom:1px solid var(--line2)}}
-.st .n{font-family:var(--mono);font-size:12px;color:var(--ink3)}
-.st h3{margin:4px 0 4px;font-size:15px}
-.st p{margin:0;font-size:13px;color:var(--ink2);line-height:1.45}
-.st[aria-pressed="true"]{background:var(--acc-soft)}
-.st[aria-pressed="true"] .n{color:var(--acc)}
-.st::after{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:var(--acc);transform:scaleX(0);transform-origin:left;transition:transform .35s}
-.st.lit::after{transform:scaleX(1)}
-.stdetail{border-top:1px solid var(--line2);padding:16px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;font-size:14px;color:var(--ink2)}
-@media (max-width:800px){.stdetail{grid-template-columns:minmax(0,1fr)}}
-.stdetail h3{color:var(--ink)}
-.stdetail p{margin:0 0 8px}
-
-.adapters{display:grid;grid-template-columns:260px minmax(0,1fr);gap:0;overflow:hidden}
-@media (max-width:860px){.adapters{grid-template-columns:minmax(0,1fr)}}
-.alist{border-right:1px solid var(--line2);padding:8px}
-@media (max-width:860px){.alist{border-right:0;border-bottom:1px solid var(--line2);display:flex;gap:6px;overflow-x:auto}}
-.aitem{display:block;width:100%;text-align:left;border:0;background:transparent;border-radius:10px;padding:12px;cursor:pointer;color:inherit}
-.aitem .row{justify-content:space-between}
-.aitem p{margin:6px 0 0;font-size:12.5px;color:var(--ink2);line-height:1.4}
-.aitem[aria-selected="true"]{background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
-@media (max-width:860px){.aitem{min-width:220px}}
-.abody{padding:20px;min-width:0}
-.abody > p{color:var(--ink2);margin:0 0 16px;max-width:60ch}
-.diag{display:grid;grid-template-columns:minmax(0,1fr) 36px minmax(0,1fr) 36px minmax(0,1fr);align-items:center;gap:0;margin-bottom:16px}
-@media (max-width:700px){.diag{grid-template-columns:minmax(0,1fr)}.diag .arrow{transform:rotate(90deg);height:28px}}
-.box{border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--surface);font-size:13px;min-height:128px}
-.box .ttl{font-size:12px;color:var(--ink3);margin-bottom:8px}
-.arrow{display:grid;place-items:center;color:var(--ink3)}
-.tok{display:inline-block;font-family:var(--mono);font-size:11.5px;padding:1px 5px;margin:2px 2px;border-radius:4px;background:var(--raised);border:1px solid var(--line)}
-.tok.hl{background:var(--acc);border-color:var(--acc);color:var(--acc-ink)}
-.vec{display:flex;gap:2px;margin:6px 0;align-items:flex-end;height:26px}
-.vec i{flex:1;background:var(--acc);opacity:.7;border-radius:1px}
-.facts{display:flex;gap:22px;flex-wrap:wrap;font-size:13px;color:var(--ink2);border-top:1px solid var(--line2);padding-top:14px}
-.facts b{display:block;color:var(--ink);font-size:14px}
-
-.simwrap{padding:16px}
-.simbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px}
-.stats{display:flex;gap:22px;margin-left:auto;flex-wrap:wrap}
-.stat{font-size:12px;color:var(--ink2)}
-.stat b{display:block;font-size:22px;letter-spacing:-.02em;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.1}
-.stat.bad b{color:var(--red)}
-canvas#sim{display:block;width:100%;height:210px;border-radius:12px;background:var(--surface);border:1px solid var(--line2)}
-.simnote{font-size:12.5px;color:var(--ink3);margin-top:8px}
-.switch{display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:14px;font-weight:600;user-select:none}
-.switch input{position:absolute;opacity:0;width:1px;height:1px}
-.switch .sw{width:38px;height:22px;border-radius:999px;background:var(--line);position:relative;transition:background .2s}
-.switch .sw::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 2px rgba(0,0,0,.25)}
-.switch input:checked + .sw{background:var(--acc)}
-.switch input:checked + .sw::after{transform:translateX(16px)}
-.switch input:focus-visible + .sw{outline:2px solid var(--acc);outline-offset:2px}
-
-.twocol{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;margin-top:18px}
-@media (max-width:900px){.twocol{grid-template-columns:minmax(0,1fr)}}
-.tree{font-family:var(--mono);font-size:12.5px;line-height:1.75;padding:16px;overflow-x:auto;white-space:pre;color:var(--ink2)}
-.tree b{color:var(--ink);font-weight:500}
-.tree .c{color:var(--ink3)}
-.cli{padding:16px}
-.cli pre.code{max-height:none}
-
 /* benches */
 .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 @media (max-width:960px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -365,8 +299,8 @@ footer p{margin:0}
 </style>
 <script>
 /* which page this URL is: shared by the router below. Old in-page links (/#bench) map to their page. */
-var PAGES={'/':'home','/models':'models','/playground':'playground','/under-the-hood':'under-the-hood','/testbench':'testbench','/api':'api'};
-var LEGACY={'#models':'/models','#playground':'/playground','#hood':'/under-the-hood','#bench':'/testbench','#api':'/api'};
+var PAGES={'/':'home','/models':'models','/playground':'playground','/testbench':'testbench','/api':'api'};
+var LEGACY={'#models':'/models','#playground':'/playground','#hood':'/','#bench':'/testbench','#api':'/api'};
 function pageKey(path){var p=path.length>1?path.replace(/\/+$/,''):path;return PAGES[p]||'home'}
 (function(){var p=location.pathname;if(p==='/'&&LEGACY[location.hash]){p=LEGACY[location.hash];history.replaceState({},'',p)}document.documentElement.setAttribute('data-p',pageKey(p))})();
 </script>
@@ -382,7 +316,7 @@ function pageKey(path){var p=path.length>1?path.replace(/\/+$/,''):path;return P
     <span class="chip hide-sm" id="devchip" title="Device"></span>
     <span class="chip" id="healthchip"><span class="dot" aria-hidden="true"></span><span id="healthtxt">Healthy</span></span>
     <nav aria-label="Sections">
-      <a href="/models">Models</a><a href="/playground">Playground</a><a href="/under-the-hood">Under the hood</a><a href="/testbench">Testbench</a><a href="/api">API</a>
+      <a href="/models">Models</a><a href="/playground">Playground</a><a href="/testbench">Testbench</a><a href="/api">API</a>
     </nav>
     <span class="spacer"></span>
     <button class="iconbtn" id="theme" aria-label="Switch theme" title="Switch theme">
@@ -400,7 +334,7 @@ function pageKey(path){var p=path.length>1?path.replace(/\/+$/,''):path;return P
       </h1>
       <p class="lede">Decida is a small local runtime for <strong>System One models</strong>. Point it at a Hugging Face id, and it serves typed questions over one REST API and MCP. Every answer is a probability distribution, never generated text, so it is fast, cheap and always valid.</p>
       <div class="cmd"><code><span class="d">$</span> decida serve --model decidabert=helmo/DecidaBERT-large</code><button data-copy="decida serve --model decidabert=helmo/DecidaBERT-large">Copy</button></div>
-      <div class="herolinks"><a href="/playground">Open the playground</a><a href="/under-the-hood">See how a request is served</a><a href="/testbench">Watch a model play</a></div>
+      <div class="herolinks"><a href="/playground">Open the playground</a><a href="/testbench">Watch a model play</a></div>
       <div class="scope">
         <div><b>choice</b>pick among 2–255 options</div>
         <div><b>score</b>rate on 2–32 levels</div>
@@ -505,56 +439,6 @@ function pageKey(path){var p=path.length>1?path.replace(/\/+$/,''):path;return P
   </div>
 </section>
 
-<section class="sec" id="hood" data-page="under-the-hood">
-  <div class="wrap">
-    <div class="sechead">
-      <div>
-        <h2>What happens to a request</h2>
-        <p>Six steps between your JSON and a distribution. Select a step to see what it guarantees; the backends below are where the models differ.</p>
-      </div>
-      <div class="right"><button class="btn" id="traceBtn" type="button">Trace a request</button></div>
-    </div>
-    <div class="panel">
-      <div class="flow" id="flow"></div>
-      <div class="stdetail" id="stdetail"></div>
-    </div>
-
-    <h3 style="margin:34px 0 12px;font-size:18px">Three ways to read a decision</h3>
-    <div class="panel adapters">
-      <div class="alist" role="tablist" aria-label="Backends" id="alist"></div>
-      <div class="abody" id="abody"></div>
-    </div>
-
-    <h3 style="margin:34px 0 12px;font-size:18px">Why batching matters (an illustration, not a measurement)</h3>
-    <div class="panel simwrap">
-      <div class="simbar">
-        <label class="switch"><input type="checkbox" id="batchT" checked><span class="sw" aria-hidden="true"></span>Micro-batching</label>
-        <button class="btn sm" id="simPlay" type="button">Pause</button>
-        <div class="stats" aria-live="off">
-          <div class="stat"><b id="sP50">0</b>p50 ms</div>
-          <div class="stat" id="sP95w"><b id="sP95">0</b>p95 ms</div>
-          <div class="stat"><b id="sQ">0</b>queued</div>
-          <div class="stat" id="sDw"><b id="sD">0</b>discarded</div>
-        </div>
-      </div>
-      <canvas id="sim" aria-label="Requests arriving, queueing and being served by the GPU"></canvas>
-      <p class="simnote">Three real-time games send about 60 decisions a second to one model (shown 4× slower). One at a time, the GPU falls behind, the queue grows and late answers are thrown away: that is the p95 of 330 ms we measured on Apple GPU while p50 looked fine. Batching folds the queue into one forward pass.</p>
-    </div>
-
-    <div class="twocol">
-      <div class="panel">
-        <div style="padding:16px 16px 0"><h3>Source layout</h3><p class="muted" style="margin:0;font-size:13px">Runtime, registry and testbench. Nothing that trains or generates data.</p></div>
-        <div class="tree" id="tree"></div>
-      </div>
-      <div class="panel cli">
-        <h3>Command line</h3>
-        <p class="muted" style="margin:0 0 12px;font-size:13px">The same verbs as the REST API.</p>
-        <div class="codewrap"><pre class="code" id="cliCode"></pre></div>
-      </div>
-    </div>
-  </div>
-</section>
-
 <section class="sec" id="bench" data-page="testbench">
   <div class="wrap">
     <div class="sechead">
@@ -592,7 +476,7 @@ function pageKey(path){var p=path.length>1?path.replace(/\/+$/,''):path;return P
   <div class="wrap">
     <div><h3>Decida runs models</h3><p>It loads, serves and tests them. Training and data generation are outside its scope. It can also forward requests to a hosted endpoint you choose, under a spend cap you set.</p></div>
     <div><h3>Safe by default</h3><p>Weights load as tensors only, from safetensors or weights-only files. Code that ships inside a model repo is never run, and third-party code keeps its licence file beside it.</p></div>
-    <div><h3>About this page</h3><p>Served by your own Decida server. The playground, the smoke checks and the benches call the models you have loaded, live. The batching animation under Under the hood is an illustration.</p></div>
+    <div><h3>About this page</h3><p>Served by your own Decida server. The playground, the smoke checks and the benches call the models you have loaded, live.</p></div>
   </div>
 </footer>
 
@@ -614,7 +498,6 @@ $('#theme').addEventListener('click',()=>{
   const cur=root.dataset.theme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
   root.dataset.theme=cur==='dark'?'light':'dark';
   try{localStorage.setItem('decida-theme',root.dataset.theme)}catch(e){}
-  readColors();
 });
 try{const t=localStorage.getItem('decida-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
 
@@ -922,141 +805,6 @@ function logActivity(model,r,qs){
   $('#activity').innerHTML=activity.map(a=>`<li><span class="muted">${a.t}</span><b>${esc(a.top)}</b><span>${esc(a.model)}</span><span class="r">${a.lat} ms</span></li>`).join('');
 }
 
-/* ---------- under the hood ---------- */
-const STEPS=[
- {h:'Validate',p:'Schema, types and limits',d:['Every request is checked before a model sees it: 2–255 options for a choice, 2–32 ordered levels for a score, one statement for a noul, unique keys.','A bad request fails fast with 422 and a message that names the field, such as questions.department.criteria. Nothing reaches the GPU.'],code:'{"error": {"type": "validation_error",\n  "message": "questions.department.criteria needs 2 to 255 options"}}'},
- {h:'Route',p:'Alias to loaded model',d:['model is an alias such as decidabert or qwen3-0.6b. Omit it and the first model answers.','An unknown alias returns 404 with the list of loaded models, so a client can recover instead of guessing.'],code:'{"error": {"type": "model_error",\n  "message": "model \\"pilot6\\" is not loaded",\n  "models": ["decidabert", "qwen"]}}'},
- {h:'Queue',p:'One model at a time on the GPU',d:['All questions of a request go through the model in one forward pass. POST /v1/systemone/batch takes up to 256 independent requests and answers them concurrently.','On an Apple GPU, models take a turn behind a lock, because running two at once crashes PyTorch. There is no micro-batching queue yet.'],code:'POST /v1/systemone/batch\n{"requests": [ {...}, {...} ]}   # up to 256'},
- {h:'Read',p:'Backend adapter',d:['The adapter turns state, question and options into one score per option. Encoder heads, contrastive similarity and letter logits all end in the same place: a vector of logits.','Adapters are the only backend-specific code. Add one and every endpoint, check and bench works with it.'],code:'engines: engine.py (encoder), clm_engine.py, lm_engine.py\neach answers a request with the same response shape'},
- {h:'Calibrate',p:'Temperature or a flag',d:['Encoder checkpoints ship a temperature, applied before the softmax, so a 0.9 means roughly nine in ten.','Zero-shot backends have none. Their answers carry calibrated: false and the UI marks them in amber.'],code:'p = softmax(logits / T)      # encoder, T from config\np = softmax(logits)          # clm, lm: calibrated = false'},
- {h:'Respond',p:'Distribution, usage, latency',d:['Choice returns every option\'s probability and the top pick; score returns the expected level and the legend; noul returns p(true).','output_tokens is always 0. Latency is measured per request and fed to /metrics as a histogram, so p95 is always one query away.'],code:'"usage": {"input_tokens": 61, "output_tokens": 0},\n"latency_ms": 132.4,\n"x_decida": {"model_family": "lm", "calibrated": false}'}
-];
-let curStep=0;
-$('#flow').innerHTML=STEPS.map((s,i)=>`<button class="st" type="button" aria-pressed="${i===curStep}" data-s="${i}"><span class="n">${i+1}</span><h3>${s.h}</h3><p>${s.p}</p></button>`).join('');
-function showStep(i){curStep=i;$$('#flow .st').forEach((b,j)=>b.setAttribute('aria-pressed',j===i));const s=STEPS[i];
-  $('#stdetail').innerHTML=`<div><h3>${i+1}. ${s.h}</h3>${s.d.map(p=>`<p>${esc(p)}</p>`).join('')}</div><div class="codewrap"><pre class="code">${esc(s.code)}</pre></div>`}
-$('#flow').addEventListener('click',e=>{const b=e.target.closest('[data-s]');if(b)showStep(+b.dataset.s)});
-showStep(curStep);
-$('#traceBtn').addEventListener('click',()=>{
-  const st=$$('#flow .st');st.forEach(s=>s.classList.remove('lit'));let i=0;
-  const go=()=>{if(i>=st.length){setTimeout(()=>st.forEach(s=>s.classList.remove('lit')),1400);return}st[i].classList.add('lit');showStep(i);i++;setTimeout(go,reduced?50:650)};go();
-});
-
-const ADAPTERS={
- encoder:{title:'encoder',sub:'Trained decision heads over a ModernBERT-class encoder. Decida and Laya checkpoints.',
-  intro:'The encoder reads the state and the question together, pools one vector, and a small head scores every option against it. It was trained on typed decisions, so the scores mean something and a stored temperature calibrates them.',
-  diag:()=>`<div class="box"><div class="ttl">input</div><span class="tok">[CLS]</span><span class="tok">invoice</span><span class="tok">charged</span><span class="tok">twice</span><span class="tok">…</span><span class="tok">[SEP]</span><span class="tok">Which team…</span></div>
-   <div class="arrow">${ARROW}</div>
-   <div class="box"><div class="ttl">pooled state vector</div>${vec(24,'enc')}<div class="ttl" style="margin-top:8px">per-option head</div><div class="muted" style="font-size:12px">score(option) = head(h, embed(option))</div></div>
-   <div class="arrow">${ARROW}</div>
-   <div class="box"><div class="ttl">softmax(logits / T)</div>${miniBars([['billing',.93],['technical',.05],['sales',.02]])}</div>`,
-  facts:[['0.74 to 0.77','typed-decisions accuracy'],['≈ 50 ms','per question, Apple GPU'],['calibrated','temperature in config'],['rl_agent_config.json','how it is detected']]},
- clm:{title:'clm',sub:'A frozen 8B encoder plus two trained projection heads. Scores options by cosine similarity.',
-  intro:'The state and each option text are embedded separately and compared by cosine similarity. Option embeddings do not depend on the state, so Decida caches them: a repeated question costs one state embedding, which is why CLM drops to about 17 ms. It is sensitive to how options are phrased.',
-  diag:()=>`<div class="box"><div class="ttl">state embedding (last token)</div>${vec(24,'clm-s')}<div class="ttl" style="margin-top:8px">Qwen3-8B, frozen</div></div>
-   <div class="arrow">${ARROW}</div>
-   <div class="box"><div class="ttl">option embeddings, cached</div>${vec(12,'o1')}${vec(12,'o2')}${vec(12,'o3')}</div>
-   <div class="arrow">${ARROW}</div>
-   <div class="box"><div class="ttl">cosine, then softmax</div>${miniBars([['billing',.71],['technical',.18],['sales',.11]])}</div>`,
-  facts:[['0.41','typed-decisions accuracy'],['17 ms','with cached options'],['16 GB','of weights'],['*.pt heads','how it is detected']]},
- lm:{title:'lm',sub:'Any causal LM, read zero-shot. No generation: one forward pass, then the logits of A, B, C.',
-  intro:'Decida writes the options as a lettered list and reads the next-token logits for the option letters. It works with any causal LM, which makes it great for comparison, but these models were never trained to decide: they drift toward option A and yes/no questions are close to coin flips.',
-  diag:()=>`<div class="box"><div class="ttl">prompt</div><div class="mono" style="font-size:11.5px;line-height:1.6">…charged twice…<br>Which team should handle this?<br>A. billing<br>B. technical<br>C. sales<br>Answer:</div></div>
-   <div class="arrow">${ARROW}</div>
-   <div class="box"><div class="ttl">next-token logits</div><span class="tok hl">&nbsp;A</span> 4.1<br><span class="tok">&nbsp;B</span> 3.0<br><span class="tok">&nbsp;C</span> 2.2<br><span class="muted" style="font-size:12px">every other token ignored</span></div>
-   <div class="arrow">${ARROW}</div>
-   <div class="box"><div class="ttl">softmax over letters</div>${miniBars([['billing',.66],['technical',.22],['sales',.12]])}</div>`,
-  facts:[['0.36 to 0.44','typed-decisions accuracy'],['79 to 856 ms','per question, Apple GPU'],['uncalibrated','flagged in amber'],['…ForCausalLM','how it is detected']]}
-};
-const ARROW='<svg width="22" height="12" viewBox="0 0 22 12" aria-hidden="true"><path d="M1 6h18m-5-5 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
-function vec(n,seed){let s='<div class="vec">';for(let i=0;i<n;i++)s+=`<i style="height:${20+hash(seed+i)*80}%"></i>`;return s+'</div>'}
-function miniBars(rows){return '<div class="bars" style="grid-template-columns:auto 1fr 34px">'+rows.map(([l,p],i)=>`<span class="lab${i?'':' top'}">${l}</span><span class="track"><span class="fill${i?'':' top'}" style="width:${p*100}%"></span></span><span class="num${i?'':' top'}">${p.toFixed(2)}</span>`).join('')+'</div>'}
-let curA='encoder';
-$('#alist').innerHTML=Object.entries(ADAPTERS).map(([k,a])=>{const [cls,lab]=quality(k);return `<button class="aitem" role="tab" aria-selected="${k===curA}" data-a="${k}"><div class="row"><span class="badge b-back">${a.title}</span><span class="badge ${cls}">${lab.split(' · ')[0]}</span></div><p>${a.sub}</p></button>`}).join('');
-function showA(k){curA=k;$$('#alist .aitem').forEach(b=>b.setAttribute('aria-selected',b.dataset.a===k));const a=ADAPTERS[k];
-  $('#abody').innerHTML=`<p>${a.intro}</p><div class="diag">${a.diag()}</div><div class="facts">${a.facts.map(([b,s])=>`<div><b>${b}</b>${s}</div>`).join('')}</div>`}
-$('#alist').addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b)showA(b.dataset.a)});
-showA(curA);
-
-$('#tree').innerHTML=[
- ['src/decida/',''],
- ['  runtime/',''],['    store.py','model store, lazy loading, aliases'],['    detect.py','encoder, clm or lm, and why'],['    device.py','cuda, then mps, then cpu'],['    refs.py','Hub ids, folders, downloads'],['    remote.py','hosted models, spend cap'],
- ['  serve/',''],['    api.py','REST endpoints'],['    engine.py','encoder engine'],['    clm_engine.py','cosine over cached options'],['    lm_engine.py','option-letter logits'],['    data_api.py','dataset endpoints'],
- ['  schema/','typed questions and answers'],['  model/enc.py','the encoder'],
- ['  mcp_server.py','tools for coding agents'],['  checks.py','14 tasks plus math checks'],['  settings.py','~/.decida/settings.json'],
- ['  web/bench/','games, sorter, palette, emoji,'],['','wikispeedia, town, compare'],
- ['third_party/licenses/','kept beside ported code']
-].map(([a,b])=>`<b>${esc(a.padEnd(22,' '))}</b><span class="c">${esc(b)}</span>`).join('\n');
-$('#cliCode').innerHTML=[
- ['# serve the models in ~/.decida/settings.json (created with the defaults on the first run)',1],['decida serve',0],['',0],
- ['# add or remove models, or restore the defaults',1],['decida setup',0],['',0],
- ['# or serve exactly these; the first is the default',1],['decida serve --model decidabert=helmo/DecidaBERT-large \\',0],['             --model qwen=helmo/Qwen3-0.6B',0],['',0],
- ['# what a running server has loaded, and on which device',1],['decida list',0],['',0],
- ['# one prediction from two JSON files, no server needed',1],['decida predict --model helmo/DecidaBERT-large \\',0],['  --state state.json --questions questions.json',0],['',0],
- ['# 14 wiring tasks against a model',1],['decida check helmo/Qwen3-0.6B',0],['',0],
- ['# what would serve this model? (reads file names only)',1],['decida detect helmo/laya:typed-decisions',0],['',0],
- ['# download the data a bench needs',1],['decida data download wikispeedia',0],['',0],
- ['# expose tools to a coding agent',1],['decida mcp',0]
-].map(([l,c])=>c?`<span class="c">${esc(l)}</span>`:esc(l)).join('\n');
-
-/* ---------- batching sim ---------- */
-const cv=$('#sim');const ctx=cv.getContext('2d');let C={};
-function readColors(){const cs=getComputedStyle(document.documentElement);['--acc','--ink','--ink2','--ink3','--line','--red','--green','--raised','--surface','--amber'].forEach(k=>C[k]=cs.getPropertyValue(k).trim())}
-readColors();
-const sim={batch:true,queue:[],inflight:null,out:[],lat:[],disc:0,t:0,next:0,rate:60,playing:!reduced,last:0};
-$('#batchT').addEventListener('change',e=>{sim.batch=e.target.checked;sim.lat=[];sim.disc=0});
-$('#simPlay').addEventListener('click',()=>{sim.playing=!sim.playing;$('#simPlay').textContent=sim.playing?'Pause':'Play';if(sim.playing){sim.last=performance.now();requestAnimationFrame(loop)}});
-if(!sim.playing)$('#simPlay').textContent='Play';
-function stepSim(dt){
-  const end=sim.t+dt;
-  while(sim.t<end){
-    const h=Math.min(1,end-sim.t);sim.t+=h;
-    while(sim.next<=sim.t){sim.queue.push({t0:sim.next,y:.15+Math.random()*.7});sim.next+=-Math.log(1-Math.random())*1000/sim.rate}
-    for(let i=sim.queue.length-1;i>=0;i--)if(sim.t-sim.queue[i].t0>400){sim.queue.splice(i,1);sim.disc++;sim.out.push({x0:-1,t:sim.t,drop:true,y:Math.random()})}
-    if(sim.inflight&&sim.t>=sim.inflight.end){for(const r of sim.inflight.items){sim.lat.push(sim.t-r.t0);sim.out.push({t:sim.t,y:r.y})}if(sim.lat.length>240)sim.lat.splice(0,sim.lat.length-240);sim.inflight=null}
-    if(!sim.inflight&&sim.queue.length){const n=sim.batch?Math.min(16,sim.queue.length):1;const items=sim.queue.splice(0,n);sim.inflight={items,start:sim.t,end:sim.t+(sim.batch?19+1.6*n:19)}}
-  }
-  sim.out=sim.out.filter(o=>sim.t-o.t<350);
-}
-function pct(a,p){if(!a.length)return 0;const s=[...a].sort((x,y)=>x-y);return s[Math.min(s.length-1,Math.floor(p*s.length))]}
-let statT=0;
-function draw(){
-  const dpr=window.devicePixelRatio||1;const w=cv.clientWidth,h=cv.clientHeight;
-  if(cv.width!==Math.round(w*dpr)||cv.height!==Math.round(h*dpr)){cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr)}
-  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
-  const qx0=w*.06,qx1=w*.56,gx=w*.6,gw=Math.max(90,w*.15),ox=gx+gw+14;
-  ctx.font='12px '+getComputedStyle(document.body).fontFamily;ctx.fillStyle=C['--ink3'];
-  ctx.fillText('queue',qx0,20);ctx.fillText('GPU',gx,20);ctx.fillText('answers',ox,20);
-  // queue lane
-  ctx.strokeStyle=C['--line'];ctx.lineWidth=1;ctx.setLineDash([3,4]);ctx.beginPath();ctx.moveTo(qx0,h/2);ctx.lineTo(qx1,h/2);ctx.stroke();ctx.setLineDash([]);
-  const cap=Math.floor((qx1-qx0)/9);const shown=Math.min(cap,sim.queue.length);
-  for(let i=0;i<shown;i++){const r=sim.queue[i];const age=Math.min(1,(sim.t-r.t0)/400);const x=qx1-i*9;
-    ctx.fillStyle=age>.6?C['--red']:age>.3?C['--amber']:C['--acc'];ctx.globalAlpha=.9;ctx.beginPath();ctx.arc(x,h/2+Math.sin(i*1.7)*10,3.2,0,6.3);ctx.fill()}
-  ctx.globalAlpha=1;
-  if(sim.queue.length>cap){ctx.fillStyle=C['--red'];ctx.fillText('+'+(sim.queue.length-cap)+' waiting',qx0,h/2+32)}
-  // gpu box
-  ctx.strokeStyle=C['--ink3'];ctx.lineWidth=1.2;roundRect(gx,40,gw,h-70,10);ctx.stroke();
-  if(sim.inflight){const n=sim.inflight.items.length;const prog=Math.min(1,(sim.t-sim.inflight.start)/(sim.inflight.end-sim.inflight.start));
-    ctx.fillStyle=C['--acc'];ctx.globalAlpha=.12;roundRect(gx+1,40+1,(gw-2)*prog,h-72,9);ctx.fill();ctx.globalAlpha=1;
-    const cols=4;for(let i=0;i<n;i++){const cx=gx+gw/2+((i%cols)-(cols-1)/2)*12,cy=h/2+(Math.floor(i/cols)-(Math.ceil(n/cols)-1)/2)*12;ctx.fillStyle=C['--acc'];ctx.beginPath();ctx.arc(cx,cy,3.4,0,6.3);ctx.fill()}
-    ctx.fillStyle=C['--ink2'];ctx.fillText(n>1?`batch of ${n}`:'1 request',gx+8,h-40)}
-  // outputs
-  for(const o of sim.out){const a=(sim.t-o.t)/350;if(o.drop){ctx.fillStyle=C['--red'];ctx.globalAlpha=1-a;ctx.fillText('×',qx0-14+a*4,h/2+(o.y-.5)*60);continue}
-    const x=ox+a*(w-ox-10);ctx.globalAlpha=1-a*a;ctx.fillStyle=C['--green'];ctx.beginPath();ctx.arc(x,40+o.y*(h-80),3,0,6.3);ctx.fill()}
-  ctx.globalAlpha=1;
-}
-function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
-let visible=true;
-new IntersectionObserver(es=>{visible=es[0].isIntersecting;if(visible&&sim.playing){sim.last=performance.now();requestAnimationFrame(loop)}}).observe(cv);
-function loop(now){
-  if(!sim.playing||!visible)return;
-  const dt=Math.min(50,now-(sim.last||now))/4;sim.last=now;stepSim(dt);draw();
-  if(now-statT>300){statT=now;$('#sP50').textContent=Math.round(pct(sim.lat,.5));const p95=Math.round(pct(sim.lat,.95));$('#sP95').textContent=p95;$('#sP95w').classList.toggle('bad',p95>150);$('#sQ').textContent=sim.queue.length;$('#sD').textContent=sim.disc;$('#sDw').classList.toggle('bad',sim.disc>0)}
-  requestAnimationFrame(loop);
-}
-if(sim.playing){requestAnimationFrame(loop)}else{stepSim(3000);draw();$('#sP50').textContent=Math.round(pct(sim.lat,.5));$('#sP95').textContent=Math.round(pct(sim.lat,.95));$('#sQ').textContent=sim.queue.length}
-window.addEventListener('resize',()=>{if(cv.clientWidth>0)draw()});   // also when its page was hidden while it last drew
-
 /* ---------- benches ---------- */
 const TH={
  dino:`<svg viewBox="0 0 300 128" fill="none"><line x1="0" y1="96" x2="300" y2="96" stroke="currentColor" stroke-width="1.5"/><g fill="var(--ink)"><rect x="46" y="62" width="18" height="22" rx="2"/><rect x="58" y="54" width="16" height="12" rx="2"/><rect x="48" y="84" width="4" height="12"/><rect x="58" y="84" width="4" height="12"/></g><g fill="currentColor"><rect x="150" y="72" width="8" height="24" rx="2"/><rect x="144" y="80" width="6" height="4"/><rect x="226" y="66" width="10" height="30" rx="2"/></g><path d="M64 56 Q110 14 150 60" stroke="var(--acc)" stroke-width="1.5" stroke-dasharray="4 4"/><g font-family="var(--mono)" font-size="10" fill="var(--ink2)"><text x="176" y="24">jump 0.91</text><text x="176" y="38">duck 0.02</text><text x="176" y="52">stay 0.07</text></g></svg>`,
@@ -1133,7 +881,7 @@ setInterval(()=>{if(models.some(m=>m.status==='loading'))refreshModels()},3000);
 })();
 
 /* ---- pages: each nav item is its own URL and shows only its section; the server returns this file for all of them ---- */
-const PAGE_TITLES={home:'Decida',models:'Models',playground:'Playground','under-the-hood':'Under the hood',testbench:'Testbench',api:'API'};
+const PAGE_TITLES={home:'Decida',models:'Models',playground:'Playground',testbench:'Testbench',api:'API'};
 function showPage(path,push){
   const p=(path.length>1?path.replace(/\/+$/,''):path),key=pageKey(p);
   document.documentElement.setAttribute('data-p',key);
