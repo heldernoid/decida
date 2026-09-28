@@ -317,6 +317,36 @@ def ps_cmd(url: str = typer.Option("http://127.0.0.1:8000", help="Running Decida
     _print_table(("", "NAME", "BACKEND", "STATUS", "DEVICE", "MODE", "REF"), rows)
 
 
+@app.command("unload")
+def unload_cmd(alias: str = typer.Argument(..., help="Model alias to unload"),
+               url: str = typer.Option("http://127.0.0.1:8000", help="Running Decida server")):
+    """Unload a model from a running `decida serve`, freeing its RAM/VRAM and removing it from that server's list
+    (`decida ps` stops showing it; it is not enough afterwards to just name it in a request). It stays configured
+    in settings.json and downloaded on disk; to serve it again on the same running server, POST its ref back to
+    /v1/models, or restart `decida serve`."""
+    import json
+    import urllib.error
+    import urllib.request
+    req = urllib.request.Request(f"{url}/v1/models/{alias}", method="DELETE")
+    try:
+        with urllib.request.urlopen(req) as r:
+            data = json.load(r)
+    except urllib.error.HTTPError as exc:
+        try:
+            message = json.load(exc).get("error", {}).get("message", str(exc))
+        except json.JSONDecodeError:
+            message = str(exc)
+        typer.echo(f"error: {message}", err=True)
+        raise typer.Exit(1) from exc
+    except (urllib.error.URLError, ConnectionError, TimeoutError) as exc:
+        typer.echo(f"error: could not reach {url} ({exc}). Is `decida serve` running?", err=True)
+        raise typer.Exit(1) from exc
+    except json.JSONDecodeError as exc:
+        typer.echo(f"error: {url} did not return valid JSON; is it a Decida server?", err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(f"unloaded {data['removed']}")
+
+
 @app.command("data")
 def data_cmd(action: str = typer.Argument(..., help="status | download"),
              dataset: str = typer.Argument("wikispeedia", help="Dataset id")):
