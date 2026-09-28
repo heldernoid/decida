@@ -4,9 +4,11 @@ Decida is a local runtime for **System One models**: models that read a **state*
 
 It loads models from Hugging Face, serves them over one REST API and an MCP server, and comes with a testbench of small games and tools for seeing how a model really behaves.
 
-![Decida in use: the T-Rex runner and Tetris benches judged live by a local model, then the home page](assets/demo.gif)
+<p align="center">
+  <img src="assets/demo.gif" alt="Decida in use: the T-Rex runner and Tetris benches judged live by a local model, then the home page">
+</p>
 
-*A real local server (DecidaBERT-large and friends on an Apple GPU), not a mock-up.*
+*A real local Decida server on Apple GPU.*
 
 | question type | you give | you get back |
 |---|---|---|
@@ -21,7 +23,7 @@ uv tool install git+https://github.com/heldernoid/decida     # a global `decida`
 decida serve                                                # then open http://127.0.0.1:8000
 ```
 
-Works out of the box on **Apple Silicon** (Apple GPU through MPS) and **NVIDIA GPUs** (CUDA) — no extra steps.
+Works out of the box on **Apple Silicon** (Apple GPU through MPS) and **NVIDIA GPUs** (CUDA), with no extra steps.
 
 **AMD GPU (ROCm)**: one extra install step, since the standard `torch` wheel is CUDA-only:
 
@@ -31,7 +33,7 @@ uv pip install --no-config --python "$(uv tool dir)/decida/bin/python" \
   "torch==2.12.0+rocm10.0.0" "amd-torch-device-gfx1151"
 ```
 
-Replace `gfx1151` with your GPU's architecture (`rocminfo | grep "Name:.*gfx"`). Full AMD details (development install from a clone, the `--no-sync` gotcha, tested hardware) are in [CLI.md](CLI.md#amd-gpu-rocm).
+Replace `gfx1151` with your GPU's architecture (`rocminfo | grep "Name:.*gfx"`). Full AMD details (development install from a clone, the `--no-sync` gotcha, tested hardware) are in [DOCS.md](DOCS.md#amd-gpu-rocm).
 
 From a clone of this repository, use `uv sync` and `uv run decida serve` instead.
 
@@ -61,7 +63,7 @@ curl -s localhost:8000/v1/systemone -H 'content-type: application/json' -d '{
   }}'
 ```
 
-**[CLI.md](CLI.md)** has every command in depth with examples, the full model list, the REST API, the testbench, benchmark results, hosted models, settings/data/devices, and how to write questions that work well. **[MCP.md](MCP.md)** covers the MCP server, including a browser UI to try its tools with no client config.
+**[DOCS.md](DOCS.md)** has every command in depth with examples, the full model list, the REST API, the testbench, benchmark results, hosted models, settings/data/devices, and how to write questions that work well. **[MCP.md](MCP.md)** covers the MCP server, including a browser UI to try its tools with no client config.
 
 ## Licence
 
