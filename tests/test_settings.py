@@ -58,6 +58,22 @@ def test_a_damaged_file_is_reported_and_never_overwritten(home):
         S.load()
 
 
+def test_write_and_read_running_normalises_a_bind_all_host_to_a_connectable_one(home):
+    S.write_running("0.0.0.0", 8010)
+    assert S.read_running() == ("127.0.0.1", 8010), "0.0.0.0 is not something a client can connect to"
+    S.write_running("127.0.0.1", 8021)
+    assert S.read_running() == ("127.0.0.1", 8021)
+
+
+def test_read_running_is_none_with_no_file_a_bad_file_or_a_dead_pid(home):
+    assert S.read_running() is None  # no decida serve has ever run here
+    home.mkdir(parents=True)
+    S.running_path().write_text("not json")
+    assert S.read_running() is None
+    S.running_path().write_text(json.dumps({"host": "127.0.0.1", "port": 8010, "pid": 999999999}))
+    assert S.read_running() is None
+
+
 def test_add_a_model_with_a_short_default_alias():
     s = S.default_settings()
     m = S.add_model(s, " someone/Tiny-Model ")
@@ -89,6 +105,21 @@ def test_remove_by_alias_or_by_number_and_say_what_exists_otherwise():
         S.remove_model(s, "nope")
     with pytest.raises(S.SettingsError):
         S.remove_model(s, "99")
+
+
+def test_set_default_moves_a_model_to_the_front_by_alias_or_number():
+    s = S.default_settings()
+    before = [m.alias for m in s.models]
+    assert before[0] == "decidabert"
+    assert S.set_default(s, "qwen").alias == "qwen"
+    after = [m.alias for m in s.models]
+    assert after[0] == "qwen"
+    assert after[1:] == [a for a in before if a != "qwen"], "everyone else keeps their relative order"
+    second = after[1]
+    assert S.set_default(s, "2").alias == second  # by 1-based number this time
+    assert next(m.alias for m in s.models) == second
+    with pytest.raises(S.SettingsError, match="aliases are:"):
+        S.set_default(s, "nope")
 
 
 def test_serve_starts_every_model_and_leaves_out_the_hosted_one_without_its_key():

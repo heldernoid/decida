@@ -1,7 +1,10 @@
 """Minimal MCP server (stdio, newline-delimited JSON-RPC 2.0) exposing Decida decisions as tools.
 
-Zero third-party dependencies. It is a thin client of a running `decida serve` (or any /v1/systemone server);
-set DECIDA_URL (default http://localhost:8021). Question wording is shared with the eval suite families.
+Zero third-party dependencies. It is a thin client of a running `decida serve` (or any /v1/systemone server). Which
+one: DECIDA_URL wins if set; otherwise the host:port of whichever `decida serve` last started and is still running
+(`settings.write_running`/`read_running`, since `--port` is never written to settings.json and so would otherwise
+be untraceable once anything other than the default port is used); otherwise `decida serve`'s own default port.
+Question wording is shared with the eval suite families.
 """
 import json
 import os
@@ -20,20 +23,36 @@ from decida.mcp_templates import (
 )
 
 PROTOCOL = "2024-11-05"
-URL = os.environ.get("DECIDA_URL", "http://localhost:8021").rstrip("/") + "/v1/systemone"
+
+
+def resolve_url() -> str:
+    """Resolved fresh on every call (not cached at import), so a `decida serve` restarted on a different port after
+    `decida mcp` started is still found on the next call, with no env var and no restart of `decida mcp` needed."""
+    env = os.environ.get("DECIDA_URL")
+    if env:
+        base = env
+    else:
+        from decida.settings import read_running
+        running = read_running()
+        base = f"http://{running[0]}:{running[1]}" if running else "http://localhost:8000"
+    return base.rstrip("/") + "/v1/systemone"
 
 
 def _decide(state: Any, questions: dict) -> dict:
+    """The full /v1/systemone response (not just its answers): every tool below reports back which model actually
+    answered ("decida" in the request always resolves to the server's current default, see MCP.md), so the caller
+    is never left guessing which model produced a result."""
     body = json.dumps({"model": "decida", "state": state, "questions": questions}).encode()
-    req = urllib.request.Request(URL, body, {"Content-Type": "application/json"})
+    req = urllib.request.Request(resolve_url(), body, {"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=60) as r:
-        return json.load(r)["answers"]
+        return json.load(r)
 
 
-def _gate(a: dict) -> dict:
+def _gate(resp: dict) -> dict:
+    a = resp["answers"]
     ans = a["recommended_gate"]
     return {"gate": ans["choice"], "probabilities": ans["probabilities"], "is_dangerous": a["is_dangerous"]["noul"],
-            "expected_severity": a["severity"]["score"]}
+            "expected_severity": a["severity"]["score"], "model": resp["model"]}
 
 
 def _pypi_lookup(name: str) -> dict | None:
@@ -62,19 +81,22 @@ def vet_dependency(args: dict) -> dict:
     reg = {"status": 404, "detail": "Not Found"} if meta is None else {**meta, "age_days": (AS_OF - date.fromisoformat(meta["first_release"])).days if meta.get("first_release") else None}
     state = {"ecosystem": "pypi", "as_of": AS_OF.isoformat(), "proposed_command": f"pip install {args['package']}",
              "team_policy": f"Packages must have been on PyPI for at least {args.get('min_age_days', 14)} days.", "registry_lookup": reg}
-    a = _decide(state, DEP_QUESTIONS)
-    return {"gate": a["gate"]["choice"], "probabilities": a["gate"]["probabilities"], "registry": reg}
+    resp = _decide(state, DEP_QUESTIONS)
+    a = resp["answers"]
+    return {"gate": a["gate"]["choice"], "probabilities": a["gate"]["probabilities"], "registry": reg, "model": resp["model"]}
 
 
 def triage_failure(args: dict) -> dict:
-    a = _decide({"ci_job": args.get("job", "tests"), "command": args.get("command", ""), "log": args["log"]}, TRIAGE_QUESTIONS)
+    resp = _decide({"ci_job": args.get("job", "tests"), "command": args.get("command", ""), "log": args["log"]}, TRIAGE_QUESTIONS)
+    a = resp["answers"]
     return {"category": a["category"]["choice"], "probabilities": a["category"]["probabilities"],
-            "retry_worthwhile": a["retry_worthwhile"]["noul"], "needs_code_change": a["needs_code_change"]["noul"]}
+            "retry_worthwhile": a["retry_worthwhile"]["noul"], "needs_code_change": a["needs_code_change"]["noul"], "model": resp["model"]}
 
 
 def classify_text(args: dict) -> dict:
-    a = _decide({"text": args["text"]}, {"label": choice_question(args.get("instructions", "Which category fits the text best?"), args["labels"])})
-    return {"label": a["label"]["choice"], "probabilities": a["label"]["probabilities"]}
+    resp = _decide({"text": args["text"]}, {"label": choice_question(args.get("instructions", "Which category fits the text best?"), args["labels"])})
+    a = resp["answers"]
+    return {"label": a["label"]["choice"], "probabilities": a["label"]["probabilities"], "model": resp["model"]}
 
 
 def decide(args: dict) -> dict:

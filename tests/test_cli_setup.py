@@ -81,6 +81,16 @@ def test_reset_restores_the_defaults(home, hub):
     assert r.exit_code == 0 and aliases()[0] == "decidabert" and len(aliases()) == n
 
 
+def test_default_flag_moves_a_model_to_the_front_and_is_visible_in_list(home, hub):
+    r = runner.invoke(cli.app, ["setup", "--default", "qwen"])
+    assert r.exit_code == 0 and "default is now qwen" in r.output
+    assert aliases()[0] == "qwen"
+    listed = runner.invoke(cli.app, ["setup", "--list"])
+    assert "1. qwen" in listed.output and "[default]" in listed.output.splitlines()[0]
+    bad = runner.invoke(cli.app, ["setup", "--default", "nope"])
+    assert bad.exit_code == 1
+
+
 def test_the_menu_adds_removes_and_saves(home, hub):
     script = "a\nsomeone/menu-model\nr\njev\np\n8123\nn\nq\n"
     r = runner.invoke(cli.app, ["setup"], input=script)
@@ -106,7 +116,7 @@ def test_the_menu_says_where_everything_lives(home, hub):
 
 def test_the_menu_ignores_nonsense_and_quitting_immediately_keeps_the_file_valid(home, hub):
     r = runner.invoke(cli.app, ["setup"], input="zzz\nq\n")
-    assert r.exit_code == 0 and "choose a, r, d, p or q" in r.output
+    assert r.exit_code == 0 and "choose a, r, m, d, p or q" in r.output
     assert S.load()[0].models[0].alias == "decidabert"
 
 
@@ -219,3 +229,88 @@ def test_pull_with_no_local_models_says_so(home, pulled):
     S.save(S.Settings(models=[]))
     r = runner.invoke(cli.app, ["pull"])
     assert r.exit_code == 1
+
+
+def test_ps_with_no_server_running_gives_a_clear_error_not_a_traceback(home):
+    r = runner.invoke(cli.app, ["ps", "--url", "http://127.0.0.1:1"])  # port 1: nothing ever listens there
+    assert r.exit_code == 1
+    assert r.exception is None or isinstance(r.exception, SystemExit), "a connection failure must not raise past the CLI"
+    assert "decida serve" in r.output
+
+
+def test_ps_is_a_table_with_the_default_model_starred(home, monkeypatch):
+    import io
+    import urllib.request
+
+    payload = json.dumps({"default": "decidabert", "models": [
+        {"name": "decidabert", "backend": "encoder", "status": "ready", "device": "mps", "quality_mode": "specialist", "ref": "helmo/DecidaBERT-large"},
+        {"name": "qwen", "backend": "lm", "status": "ready", "device": "mps", "quality_mode": "zero-shot", "ref": "Qwen/Qwen3-0.6B"},
+    ]}).encode()
+
+    class FakeResponse(io.BytesIO):
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: FakeResponse(payload))
+    r = runner.invoke(cli.app, ["ps"])
+    assert r.exit_code == 0
+    header, decidabert, qwen = r.output.splitlines()
+    assert header.split() == ["NAME", "BACKEND", "STATUS", "DEVICE", "MODE", "REF"]
+    assert decidabert.startswith("*") and "decidabert" in decidabert
+    assert not qwen.startswith("*") and "qwen" in qwen
+
+
+@pytest.fixture
+def empty_hf_cache(monkeypatch):
+    """`scan_cache_dir()` reads the real machine's Hugging Face cache; stub it so `list` tests are not at the
+    mercy of whatever this dev machine happens to have downloaded already."""
+    import huggingface_hub
+    from huggingface_hub.errors import CacheNotFound
+
+    def raises(*a, **k):
+        raise CacheNotFound("no cache", cache_dir="/nonexistent")
+    monkeypatch.setattr(huggingface_hub, "scan_cache_dir", raises)
+
+
+def test_list_is_a_table_with_settings_models_and_no_download_state_without_a_server_or_network(home, hub, empty_hf_cache):
+    r = runner.invoke(cli.app, ["list"])
+    assert r.exit_code == 0
+    header, *lines = r.output.splitlines()
+    assert header.split() == ["NAME", "ID", "SIZE", "MODIFIED", "REF"]
+    row = next(line for line in lines if "helmo/DecidaBERT-large" in line)
+    name, id_, size, *_rest = row.split()
+    assert name == "decidabert" and id_ == "-" and size == "-", row  # nothing pulled in this test's fake HOME
+    assert "not downloaded" in row
+
+
+def test_list_with_a_hosted_model_says_so_and_keeps_columns_aligned(home, hub, empty_hf_cache, monkeypatch):
+    monkeypatch.setenv("TYPESAFE_API_KEY", "x")
+    r = runner.invoke(cli.app, ["list"])
+    assert r.exit_code == 0
+    header, *lines = r.output.splitlines()
+    jev = next(line for line in lines if line.startswith("jev"))
+    assert "hosted" in jev
+    id_col = header.index("ID")
+    assert all(line[id_col] != " " for line in lines), "every row's ID column starts at the same offset as the header's"
+
+
+def test_list_with_no_models_says_so(home):
+    S.save(S.Settings(models=[]))
+    r = runner.invoke(cli.app, ["list"])
+    assert r.exit_code == 0 and "decida setup" in r.output
+
+
+def test_bare_command_and_help_both_print_usage(home):
+    bare = runner.invoke(cli.app, [])  # Click's own no_args_is_help convention: exit 2, not a plain error box
+    helped = runner.invoke(cli.app, ["help"])
+    assert "Usage:" in bare.output and "Missing command" not in bare.output
+    assert helped.exit_code == 0 and "Usage:" in helped.output
+
+
+def test_version_prints_the_installed_version_and_exits_before_needing_a_command():
+    from importlib.metadata import version
+    r = runner.invoke(cli.app, ["--version"])
+    assert r.exit_code == 0
+    assert r.output.strip() == version("decida")
