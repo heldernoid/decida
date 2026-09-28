@@ -74,10 +74,11 @@ def test_adding_a_taken_alias_and_removing_an_unknown_one_fail_cleanly(home, hub
 
 
 def test_reset_restores_the_defaults(home, hub):
+    n = len(S.default_models())
     runner.invoke(cli.app, ["setup", "--remove", "1", "--remove", "1"])
-    assert len(aliases()) == 4
+    assert len(aliases()) == n - 2
     r = runner.invoke(cli.app, ["setup", "--reset"])
-    assert r.exit_code == 0 and aliases()[0] == "decidabert" and len(aliases()) == 6
+    assert r.exit_code == 0 and aliases()[0] == "decidabert" and len(aliases()) == n
 
 
 def test_the_menu_adds_removes_and_saves(home, hub):
@@ -139,7 +140,7 @@ def test_serve_without_models_uses_and_creates_the_settings(home, served):
     assert r.exit_code == 0, r.output
     assert "Created" in r.output and "jev (hosted) skipped: set TYPESAFE_API_KEY" in r.output
     env = served["env"]
-    assert env["DECIDA_MODELS"].split(";")[0] == "decidabert=helmo/DecidaBERT-large" and len(env["DECIDA_MODELS"].split(";")) == 5
+    assert env["DECIDA_MODELS"].split(";")[0] == "decidabert=helmo/DecidaBERT-large" and len(env["DECIDA_MODELS"].split(";")) == len(S.default_models()) - 1
     assert env["DECIDA_PRELOAD"] == "0" and served["port"] == 8000 and env["DECIDA_REMOTE_KEY_ENV"] == "TYPESAFE_API_KEY"
     assert env["DECIDA_MAX_LEN"] == "2048" and env["DECIDA_HEAD_TOKENS"] == "1400" and env["DECIDA_OPTION_TOKENS"] == "160"
     assert S.path().exists()

@@ -34,11 +34,12 @@
   <div class="controls">
     <label>Model <select id="model"></select></label>
     <label title="How many emoji are in the pile (one question each, batched into one request)">Emoji <select id="count"><option>60</option><option>120</option><option value="all" selected>all</option></select></label>
+    <label title="A real-world-association probe (does the model know a flag's colours go with this country?). Off: the usual pile. Added: all 193 UN member flags on top of the 60-emoji count (a request can only carry so many questions, so this fixes the count at 60). Only: just the 193 flags, nothing else">Flags <select id="flags"><option value="off" selected>off</option><option value="add">added to the pile</option><option value="only">only flags</option></select></label>
+    <label title="One yes/no question per emoji (many independent judgements), or one choice question over every emoji at once (a single forced pick, like the colour palette bench)">Strategy <select id="strategy"><option value="noul" selected>yes/no each</option><option value="choice">pick one (choice)</option></select></label>
     <label title="Which emoji float up. auto: a cut-off when the model clearly separates emoji, otherwise its 8 most likely (small models often say ~50% or ~0% to everything). at least: the cut-off below. top 8: always the 8 most likely.">Rule <select id="rule"><option value="auto" selected>auto</option><option value="thr">at least</option><option value="top">top 8</option></select></label>
     <label title="Used by the 'at least' rule">Sure at <input type="number" id="thr" value="50" min="5" max="95" step="5"> %</label>
     <label>Pause <input type="number" id="debounce" value="220" min="0" max="2000" step="20"> ms</label>
     <button id="rain" class="ghost">Rain again</button>
-    <button id="fs" class="ghost fsbtn" type="button" title="Show the stage full screen (Esc to leave)">Full screen</button>
   </div>
   <div id="msg"></div>
   <div id="info" class="cut"></div>
@@ -77,7 +78,12 @@ function sprite(ch) { // each emoji is drawn once into a small canvas, then stam
 }
 
 function rebuild() {
-  items = $('#count').value === 'all' ? E.EMOJIS.slice() : E.subset(+$('#count').value);
+  const flagMode = $('#flags').value, countSel = $('#count');
+  countSel.disabled = flagMode === 'only';
+  for (const opt of countSel.options) opt.disabled = flagMode === 'add' && opt.value !== '60'; // 193 flags + a bigger pile would not fit in one request
+  if (flagMode === 'add' && countSel.value !== '60') countSel.value = '60';
+  if (flagMode === 'only') { items = E.FLAGS.slice(); }
+  else { items = countSel.value === 'all' ? E.EMOJIS.slice() : E.subset(+countSel.value); if (flagMode === 'add') items = items.concat(E.FLAGS); }
   world = PH.makeWorld(W, H, items.length, R, Math.floor(Math.random() * 1e6));
   scores = []; lastKey = ''; S.lifted = 0;
   if ($('#q').value.trim()) pump();
@@ -103,28 +109,42 @@ function applyMatches(list) { // bodies of matching emoji get a spring target; e
   return hit;
 }
 
-function display(req, raw) {
-  const ids = Object.keys(req.questions), q = Object.fromEntries(ids.slice(0, 2).map(k => [k, req.questions[k]]));
-  if (ids.length > 2) q['…'] = `${ids.length - 2} more questions`;
+function shrinkQuestion(question) { // a choice question can carry 200+ criteria; show a few, note the rest
+  if (!question.criteria) return question;
+  const keys = Object.keys(question.criteria);
+  if (keys.length <= 4) return question;
+  const criteria = Object.fromEntries(keys.slice(0, 4).map(k => [k, question.criteria[k]]));
+  criteria['…'] = `${keys.length - 4} more options`;
+  return { ...question, criteria };
+}
+
+function display(req, raw, topIndex) {
+  // the monitor panel always shows the *first* key of `questions` (common/monitor.js): with 200+ independent yes/no
+  // questions keyed e0, e1, ... that would always be the same emoji (alphabetically first) no matter what was typed.
+  // Put the actual top answer's own question first instead, so what's shown explains the answer that is highlighted.
+  const topKey = topIndex != null ? `e${topIndex}` : null;
+  const ids = Object.keys(req.questions), ordered = topKey && req.questions[topKey] ? [topKey, ...ids.filter(k => k !== topKey)] : ids;
+  const q = Object.fromEntries(ordered.slice(0, 2).map(k => [k, shrinkQuestion(req.questions[k])]));
+  if (ordered.length > 2) q['…'] = `${ordered.length - 2} more questions`;
   const a = Object.keys(raw.answers), sa = Object.fromEntries(a.slice(0, 3).map(k => [k, raw.answers[k]]));
   if (a.length > 3) sa['…'] = `${a.length - 3} more answers`;
   return [{ state: req.state, questions: q }, { ...raw, answers: sa }];
 }
 
 async function pump() {
-  const text = $('#q').value.trim(), model = $('#model').value;
+  const text = $('#q').value.trim(), model = $('#model').value, strategy = $('#strategy').value;
   if (!text) { scores = []; if (world) world.bodies.forEach(b => { b.lift = null; }); S.lifted = 0; lastKey = ''; return; }
   if (!model) { say('Load a model first.', true); return; }
-  const key = `${model}|${items.length}|${text}`;
+  const key = `${model}|${items.length}|${strategy}|${text}`;
   if (key === lastKey) return;
   if (inflight) { dirty = true; return; }
   inflight = true; lastKey = key; say('');
-  const req = E.toRequest(text, items), t0 = performance.now();
+  const req = strategy === 'choice' ? E.toRequestChoice(text, items) : E.toRequest(text, items), t0 = performance.now();
   try {
     const r = await fetch('/v1/systemone', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model, ...req }) });
     const j = await r.json();
     if (!r.ok) throw new Error((j.error && j.error.message) || r.statusText);
-    const ms = performance.now() - t0, list = E.scores(j.answers, items);
+    const ms = performance.now() - t0, list = strategy === 'choice' ? E.scoresFromChoice(j.answers, items) : E.scores(j.answers, items);
     if ($('#q').value.trim() === text) { scores = list; applyMatches(list); } // ignore an answer for text that has already changed
     S.lat.push(ms); S.done++; S.tokens += (j.usage && j.usage.input_tokens) || 0;
     if (j.x_decida && j.x_decida.spent_usd != null) S.spent = j.x_decida.spent_usd;
@@ -132,8 +152,9 @@ async function pump() {
     if (cut && (cut.options_cut || cut.state_cut)) { S.cutTurns++; S.cutOptions = Math.max(S.cutOptions, cut.options_cut); }
     const top = list.slice().sort((a, b) => b.p - a.p);
     S.counts[top[0].name] = (S.counts[top[0].name] || 0) + 1;
-    const [shownReq, shownRaw] = display(req, j);
-    S.last = { probs: Object.fromEntries(top.slice(0, 8).map(e => [e.name, e.p])), choice: top[0].name, confidence: top[0].p, ms, subject: `"${text}"`, msLabel: `(${items.length} questions)`, request: shownReq, raw: shownRaw };
+    const [shownReq, shownRaw] = display(req, j, top[0].index);
+    const msLabel = strategy === 'choice' ? `(1 choice question, ${items.length} options)` : `(${items.length} questions)`;
+    S.last = { probs: Object.fromEntries(top.slice(0, 8).map(e => [e.name, e.p])), choice: top[0].name, confidence: top[0].p, ms, subject: `"${text}"`, msLabel, request: shownReq, raw: shownRaw };
     render();
   } catch (e) { S.errors++; say('Request failed: ' + e.message, true); lastKey = ''; }
   inflight = false;
@@ -194,11 +215,13 @@ const schedule = () => { $('#chips').style.display = $('#q').value ? 'none' : 'f
 $('#q').addEventListener('input', schedule);
 $('#model').addEventListener('change', () => { lastKey = ''; pump(); });
 $('#count').addEventListener('change', rebuild);
+$('#flags').addEventListener('change', rebuild);
+$('#strategy').addEventListener('change', () => { lastKey = ''; pump(); });
 for (const id of ['thr', 'rule']) $('#' + id).addEventListener('change', () => { if (scores.length) applyMatches(scores); render(); });
 $('#rain').addEventListener('click', rebuild);
 $('#chips').addEventListener('click', e => { const b = e.target.closest('.chip'); if (!b) return; $('#q').value = b.textContent; $('#chips').style.display = 'none'; $('#q').focus(); lastKey = ''; pump(); });
-for (const id of ['count', 'thr', 'rule', 'debounce']) if (QP.get(id)) $('#' + id).value = QP.get(id);
-$('#fs').addEventListener('click', () => { const st = $('#stage'); if (document.fullscreenElement) document.exitFullscreen(); else if (st.requestFullscreen) st.requestFullscreen(); });
+for (const id of ['count', 'strategy', 'thr', 'rule', 'debounce']) if (QP.get(id)) $('#' + id).value = QP.get(id);
+if (QP.get('flags')) $('#flags').value = QP.get('flags');
 window.__emoji = { S, get world() { return world; }, get items() { return items; }, get scores() { return scores; }, get inflight() { return inflight; } };
 rebuild(); render(); requestAnimationFrame(frame);
 loadModels().then(() => { if (QP.get('q')) { $('#q').value = QP.get('q'); $('#chips').style.display = 'none'; pump(); } });

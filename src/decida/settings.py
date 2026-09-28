@@ -88,6 +88,8 @@ def default_models() -> list[ModelSpec]:
         ModelSpec(alias="laya", ref="helmo/laya", note="Laya, English checkpoint"),
         ModelSpec(alias="laya-multilingual", ref="helmo/laya:multilingual", note="Laya, multilingual checkpoint"),
         ModelSpec(alias="qwen", ref="helmo/Qwen3-0.6B", note="Qwen3-0.6B, a general language model read zero-shot"),
+        ModelSpec(alias="gliner-decide", ref="helmo/GLiNER2.5-Decide", note="GLiNER2.5-Decide, DeBERTa-v3-large, read zero-shot"),
+        ModelSpec(alias="gliner-multi-decide", ref="helmo/GLiNER2.5-multi-Decide", note="GLiNER2.5-multi-Decide, multilingual, read zero-shot"),
         ModelSpec(alias="jev", ref=HOSTED_URL, note="TypeSafe Jev, hosted; needs TYPESAFE_API_KEY and is capped by the spend limit"),
     ]
 

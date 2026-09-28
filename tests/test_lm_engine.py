@@ -70,6 +70,33 @@ def test_chat_template_path_and_no_truncation(engine):
         engine.option_probs("word " * 5000, "noul", "true?", None)
 
 
+def test_batched_and_one_at_a_time_agree(engine):
+    """option_probs_many pads mixed-length prompts (a 3-option and an 8-option question) into one forward pass;
+    each row must read back its own answer, not a neighbour's or the shared padded length's last position."""
+    items = [("choice", "Pick one", {"a": "first", "b": "second", "c": ""}), ("choice", "Pick one of many", {str(i): "" for i in range(8)}),
+              ("noul", "It happened.", None)]
+    batched = engine.option_probs_many("some evidence", items)
+    individually = [engine.option_probs("some evidence", *item) for item in items]
+    assert len(batched) == 3
+    for (bp, bn), (ip, ipn) in zip(batched, individually):
+        assert bn == ipn, "token counts (real tokens, ignoring this row's padding) must match the unbatched call"
+        assert bp == pytest.approx(ip, abs=1e-4), "batching must not change a question's own answer"
+
+
+def test_multi_question_request_with_mixed_option_counts():
+    """The fixture's REQ already mixes a 3-option choice, a 4-level score and a 2-option noul (different prompt
+    lengths): exercises the padded-batch path end to end, not just option_probs_many directly."""
+    tok = AutoTokenizer.from_pretrained(TOKENIZER_DIR)
+    torch.manual_seed(1)
+    cfg = LlamaConfig(vocab_size=len(tok), hidden_size=32, intermediate_size=64, num_hidden_layers=2, num_attention_heads=2, num_key_value_heads=2, max_position_embeddings=2048)
+    eng = LMEngine(LlamaForCausalLM(cfg).eval(), tok, "cpu", max_input_tokens=1024, model_id="tiny-random-2")
+    resp = eng.predict_sync(SystemOneRequest(REQ))
+    a = resp["answers"]
+    assert abs(sum(a["c"]["probabilities"].values()) - 1) < 1e-5
+    assert abs(sum(a["s"]["probabilities"].values()) - 1) < 1e-5
+    assert 0 <= a["n"]["noul"] <= 1
+
+
 def test_format_answer_shared_with_encoder_engine():
     assert format_answer("noul", [0.3, 0.7], None)["noul"] == 0.7
     assert format_answer("choice", [0.1, 0.9], {"a": "", "b": ""})["choice"] == "b"

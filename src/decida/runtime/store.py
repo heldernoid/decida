@@ -16,7 +16,7 @@ logger = logging.getLogger("decida.runtime")
 
 DEFAULT_CLM_BASE = "Qwen/Qwen3-8B"
 # Most options one choice question can carry per backend (lm reads one letter A-Z per option).
-MAX_OPTIONS = {Backend.ENCODER: 255, Backend.CLM: 255, Backend.LM: 26, Backend.REMOTE: 255}
+MAX_OPTIONS = {Backend.ENCODER: 255, Backend.CLM: 255, Backend.LM: 26, Backend.GLINER: 255, Backend.REMOTE: 255}
 
 
 class ModelError(Exception):
@@ -109,6 +109,9 @@ class ModelStore:
             from decida.serve.lm_engine import LMEngine
             repo, folder = split_ref(e.ref)
             e.engine = LMEngine.load(str(local_dir(e.ref)) if folder else repo, device=e.device, dtype=e.dtype)
+        elif d.backend == Backend.GLINER:
+            from decida.serve.gliner_engine import GlinerEngine
+            e.engine = GlinerEngine.load(str(local_dir(e.ref)), device=e.device)
         elif d.backend == Backend.CLM:
             from pathlib import Path
 

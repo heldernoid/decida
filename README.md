@@ -51,9 +51,11 @@ decida mcp                            # tools for a coding agent (needs a runnin
 | `laya` | `helmo/laya` | Laya, English checkpoint | Apache-2.0 |
 | `laya-multilingual` | `helmo/laya:multilingual` | Laya, multilingual checkpoint | Apache-2.0 |
 | `qwen` | [helmo/Qwen3-0.6B](https://huggingface.co/helmo/Qwen3-0.6B) | a general language model, read zero-shot through option letters | Apache-2.0 |
+| `gliner-decide` | [helmo/GLiNER2.5-Decide](https://huggingface.co/helmo/GLiNER2.5-Decide) | a DeBERTa-v3-large classifier, read zero-shot | Apache-2.0 |
+| `gliner-multi-decide` | [helmo/GLiNER2.5-multi-Decide](https://huggingface.co/helmo/GLiNER2.5-multi-Decide) | a smaller multilingual classifier, read zero-shot | Apache-2.0 |
 | `jev` | TypeSafe Jev (hosted) | a hosted model, used as a reference; see below | TypeSafe's terms |
 
-`helmo/laya` and `helmo/Qwen3-0.6B` are unmodified copies of [convaiinnovations/laya](https://huggingface.co/convaiinnovations/laya) and [Qwen/Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B), kept as a backup so they can always be downloaded. Each copy has a `MIRROR.md` with the original commit and file hashes. Any Hugging Face model can be added: Decida detects whether it is an encoder checkpoint, a causal language model, or a Contrastive-LM checkpoint, and `username/model-id:folder` picks one checkpoint out of a repository that holds several.
+`helmo/laya`, `helmo/Qwen3-0.6B`, `helmo/GLiNER2.5-Decide` and `helmo/GLiNER2.5-multi-Decide` are unmodified copies of [convaiinnovations/laya](https://huggingface.co/convaiinnovations/laya), [Qwen/Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B) and Fastino AI's [GLiNER2.5-Decide](https://huggingface.co/fastino/GLiNER2.5-Decide) / [GLiNER2.5-multi-Decide](https://huggingface.co/fastino/GLiNER2.5-multi-Decide), kept as a backup so they can always be downloaded. Each copy has a `MIRROR.md` with the original commit and file hashes. The GLiNER checkpoints are read directly with `transformers`/`torch` (Decida's own prompt layout and classifier head), not through the `gliner2` package. Any Hugging Face model can be added: Decida detects whether it is an encoder checkpoint, a causal language model, a Contrastive-LM checkpoint, or a GLiNER2 classifier, and `username/model-id:folder` picks one checkpoint out of a repository that holds several.
 
 ## Using it
 
@@ -89,12 +91,15 @@ Open the **Testbench** page of the running server. Each bench is a static page t
 |---|---|
 | T-Rex runner, Snake, Flappy, Tetris | real-time games where the model chooses every few frames, with an exact oracle to score each choice |
 | Candies sorter | one small question per candy, 256 per request, sorted into five bowls |
-| Colour palette, Emoji finder | how well a model matches a phrase to colours or emoji |
+| Inbox | 100 emails, 25 spam, filed by one batched yes/no question each; a suspicious-looking link is disabled regardless of what the model said |
+| Colour palette, Emoji finder | how well a model matches a phrase to colours or emoji, including whether it knows a country's flag or a brand's colours |
 | Wikispeedia | click through real articles, with images, from a start page to a goal page; compared with recorded human averages |
 | AI Town | one announcement, fifty citizens, each deciding what to do, with a stopwatch over the whole town |
+| Live fraud gate | card transactions arrive one at a time; the correct call is computed from each transaction's own fields, not hand-labelled, and misses are split from over-caution instead of one accuracy figure |
+| News trading | wire headlines and a social-media reaction arrive one at a time; buy, hold or sell against the conventional, textbook-expected direction for that kind of news |
 | Model compare | the same questions to several models side by side, plus a hand-written labelled set that scores accuracy, confidence and latency |
 
-The Candies sorter and AI Town ideas come from Matthew Berman's video "We need to talk about Jev...", the colour palette from Matt DesLauriers and the emoji finder from Stefan (@heystefan_). None of them published code; the designs and implementations here are our own. See `THIRD_PARTY.md`.
+The Candies sorter and AI Town ideas come from Matthew Berman's video "We need to talk about Jev...", the colour palette from Matt DesLauriers and the emoji finder from Stefan (@heystefan_). Inbox, Live fraud gate and News trading are original. None of the credited ones published code; the designs and implementations here are our own. See `THIRD_PARTY.md`.
 
 ## Results
 

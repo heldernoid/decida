@@ -1,5 +1,7 @@
-"""Decoder-LM engine (the SemIf idea): no training, no generation. One forward pass per question; the probabilities are the model's
-next-token logits restricted to the option-letter tokens. Serves the same /v1/systemone shape as the encoder engine.
+"""Decoder-LM engine (the SemIf idea): no training, no generation. Every question in a request goes through one
+right-padded batch and one forward pass (`option_probs_many`); the probabilities are the model's next-token logits
+at each row's own last real token, restricted to the option-letter tokens. Serves the same /v1/systemone shape as
+the encoder engine.
 
 Differences from SemIf's reference runner (https://github.com/TheoLeeCJ, read critically): a readable prompt instead of a JSON payload,
 `noul` and `score` questions are mapped onto lettered options too, base models without a chat template use a plain prompt, and the
@@ -97,33 +99,49 @@ class LMEngine:
 
     @torch.inference_mode()
     def option_probs(self, state: Any, qtype: str, instructions: str, criteria: Any) -> tuple[list[float], int]:
-        options = option_lines(qtype, criteria)
-        if not 2 <= len(options) <= len(LETTERS):
-            raise ValueError(f"the LM engine supports 2-{len(LETTERS)} options, got {len(options)}")
-        ids, spaced = self.prompt_ids(build_user_text(state, qtype, instructions, options))
-        if len(ids) > self.max_input_tokens:
-            raise ValueError(f"prompt has {len(ids)} tokens, over the limit {self.max_input_tokens}; the LM engine never truncates")
-        slots = resolve_slots(self.tokenizer, len(options), spaced)
-        inp = torch.tensor([ids], dtype=torch.long, device=self.device)
-        kw: dict[str, Any] = {"input_ids": inp, "attention_mask": torch.ones_like(inp), "use_cache": False}
-        try:
-            logits = self.model(**kw, logits_to_keep=1).logits[0, -1]
-        except TypeError:
-            logits = self.model(**kw).logits[0, -1]
-        return F.softmax(logits.float()[slots], dim=-1).cpu().tolist(), len(ids)
+        return self.option_probs_many(state, [(qtype, instructions, criteria)])[0]
+
+    @torch.inference_mode()
+    def option_probs_many(self, state: Any, items: list[tuple[str, str, Any]]) -> list[tuple[list[float], int]]:
+        """Every question against the same state, in one right-padded batch and one forward pass, instead of one
+        forward pass per question (same fix as `GlinerModel.score_many`). Causal attention already keeps a real
+        token from ever seeing a later, padded one, so right-padding needs no position-id surgery — each row's
+        answer is just read from its own last real token, via `attention_mask`'s row sum, instead of a shared -1."""
+        prepared = []
+        for qtype, instructions, criteria in items:
+            options = option_lines(qtype, criteria)
+            if not 2 <= len(options) <= len(LETTERS):
+                raise ValueError(f"the LM engine supports 2-{len(LETTERS)} options, got {len(options)}")
+            ids, spaced = self.prompt_ids(build_user_text(state, qtype, instructions, options))
+            if len(ids) > self.max_input_tokens:
+                raise ValueError(f"prompt has {len(ids)} tokens, over the limit {self.max_input_tokens}; the LM engine never truncates")
+            prepared.append((ids, resolve_slots(self.tokenizer, len(options), spaced)))
+        maxlen = max(len(ids) for ids, _ in prepared)
+        pad_id = self.tokenizer.pad_token_id if self.tokenizer.pad_token_id is not None else self.tokenizer.eos_token_id
+        input_ids = torch.full((len(prepared), maxlen), pad_id, dtype=torch.long, device=self.device)
+        attn = torch.zeros((len(prepared), maxlen), dtype=torch.long, device=self.device)
+        for i, (ids, _) in enumerate(prepared):
+            input_ids[i, :len(ids)] = torch.tensor(ids, dtype=torch.long, device=self.device)
+            attn[i, :len(ids)] = 1
+        logits = self.model(input_ids=input_ids, attention_mask=attn, use_cache=False).logits
+        last = attn.sum(dim=1) - 1  # each row's own last real token, not a shared -1 (rows end at different lengths)
+        out = []
+        for i, (ids, slots) in enumerate(prepared):
+            probs = F.softmax(logits[i, last[i]].float()[slots], dim=-1).cpu().tolist()
+            out.append((probs, len(ids)))
+        return out
 
     def predict_sync(self, req: SystemOneRequest) -> dict[str, Any]:
         with compute_lock(self.device):   # one model on the GPU at a time (see runtime/device.py)
             return self._predict_unlocked(req)
 
     def _predict_unlocked(self, req: SystemOneRequest) -> dict[str, Any]:
-        answers, tokens = {}, 0
         noul_conf = bool(req.x_decida.get("noul_confidence", False))
-        for qid, q in req.questions.items():
-            t = q["type"]
-            probs, n = self.option_probs(req.state, t, q["instructions"], q.get("criteria", {}))
-            answers[qid] = format_answer(t, probs, normalize_criteria(t, q.get("criteria", {})), noul_conf)
-            tokens += n
+        qids = list(req.questions)
+        items = [(req.questions[qid]["type"], req.questions[qid]["instructions"], req.questions[qid].get("criteria", {})) for qid in qids]
+        results = self.option_probs_many(req.state, items)  # every question in one batch, one forward pass
+        answers = {qid: format_answer(t, probs, normalize_criteria(t, criteria), noul_conf) for qid, (t, _, criteria), (probs, _) in zip(qids, items, results)}
+        tokens = sum(n for _, n in results)
         return {"model": req.model, "answers": answers, "usage": {"input_tokens": tokens, "output_tokens": 0}}
 
     async def predict_async(self, req: SystemOneRequest) -> dict[str, Any]:

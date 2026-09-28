@@ -23,15 +23,26 @@ export const MAX_COLOURS = 26; // the LM backend reads one letter per option
 export const METHODS = { single: 'one question', rotated: 'averaged over rotated option orders' };
 export const COPIES = 4;
 
-const INSTRUCTIONS = 'Which colour does this make you think of?';
-const option = c => `${c.name}, the colour of ${c.typical}`;
+// Two experiments to run against each other, not assumed to be improvements (see AGENTS.md: no claim without a
+// measurement). FRAMES: the fixed instructions asks about a literal look-alike; ASSOC asks about association
+// instead, for phrases like a brand, place or concept where no described colour ("the colour of tomatoes") applies.
+// CRITERIA_STYLES: 'described' is the measured baseline (palette.js:5-6); 'bare' drops the described option ("red,
+// the colour of tomatoes, fire trucks, roses, blood") to just the colour name, on the hypothesis that the
+// description anchors the encoder to literal object matches and may work against it on associative phrases.
+export const FRAMES = { plain: 'Which colour does this make you think of?', assoc: 'Which colour is most associated with this brand, place, or idea?' };
+export const CRITERIA_STYLES = { described: 'described (what it looks like)', bare: 'bare (just the colour name)' };
+
+const option = (c, style) => style === 'bare' ? c.name : `${c.name}, the colour of ${c.typical}`;
 
 const rotate = (a, k) => a.map((_, i) => a[(i + k) % a.length]);
 
-export function toRequest(phrase, method = 'single', copies = COPIES) {
+export function toRequest(phrase, method = 'single', copies = COPIES, frame = 'plain', criteriaStyle = 'described') {
   const text = String(phrase).trim();
   if (!text) throw new Error('type something first');
-  const q = order => ({ type: 'choice', instructions: INSTRUCTIONS, criteria: Object.fromEntries(order.map(c => [c.name, option(c)])) });
+  if (!(frame in FRAMES)) throw new Error(`unknown frame: ${frame}`);
+  if (!(criteriaStyle in CRITERIA_STYLES)) throw new Error(`unknown criteria style: ${criteriaStyle}`);
+  const instructions = FRAMES[frame];
+  const q = order => ({ type: 'choice', instructions, criteria: Object.fromEntries(order.map(c => [c.name, option(c, criteriaStyle)])) });
   if (method === 'rotated') { const step = PALETTE.length / copies; return { state: text, questions: Object.fromEntries(Array.from({ length: copies }, (_, k) => [`o${k}`, q(rotate(PALETTE, Math.round(k * step)))])) }; }
   return { state: text, questions: { colour: q(PALETTE) } };
 }

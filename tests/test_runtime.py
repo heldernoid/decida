@@ -19,6 +19,14 @@ def test_detect_encoder(tmp_path):
     assert d.backend == Backend.ENCODER and d.calibrated and d.quality_mode == "specialist"
 
 
+def test_detect_gliner(tmp_path):
+    (tmp_path / "encoder_config").mkdir()
+    (tmp_path / "encoder_config" / "config.json").write_text("{}")
+    (tmp_path / "config.json").write_text(json.dumps({"model_type": "extractor", "architecture": "span"}))
+    d = detect(str(tmp_path))
+    assert d.backend == Backend.GLINER and not d.calibrated and d.quality_mode == "zero-shot"
+
+
 def test_detect_lm(tmp_path):
     (tmp_path / "config.json").write_text(json.dumps({"architectures": ["Qwen3ForCausalLM"]}))
     assert detect(str(tmp_path)).backend == Backend.LM

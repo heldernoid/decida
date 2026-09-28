@@ -61,6 +61,53 @@ export const EMOJIS = [
   ]),
 ];
 
+// Country flags: kept out of EMOJIS on purpose. They're a real-world-association probe (does the model know a flag's
+// colours/shape go with this country?), not part of the base "things you can search for" set, so they must not
+// change the 60/120/all counts anyone is already using — a bench control opts them in explicitly, off by default.
+// All 193 UN member states, by hand (deciding which countries belong and what to call them is the editorial part).
+// A flag emoji is a fixed, unambiguous rendering of its ISO 3166-1 alpha-2 code (two "regional indicator" letters),
+// not free text, so it is derived from the code instead of hand-typed 193 times over, which only risks transcription
+// errors on a mapping that has exactly one correct answer.
+const flagOf = code => [...code].map(c => String.fromCodePoint(0x1f1e6 + c.charCodeAt(0) - 65)).join('');
+const COUNTRIES = [
+  ['AF', 'afghanistan'], ['AL', 'albania'], ['DZ', 'algeria'], ['AD', 'andorra'], ['AO', 'angola'], ['AG', 'antigua and barbuda'],
+  ['AR', 'argentina'], ['AM', 'armenia'], ['AU', 'australia'], ['AT', 'austria'], ['AZ', 'azerbaijan'], ['BS', 'bahamas'],
+  ['BH', 'bahrain'], ['BD', 'bangladesh'], ['BB', 'barbados'], ['BY', 'belarus'], ['BE', 'belgium'], ['BZ', 'belize'],
+  ['BJ', 'benin'], ['BT', 'bhutan'], ['BO', 'bolivia'], ['BA', 'bosnia and herzegovina'], ['BW', 'botswana'], ['BR', 'brazil'],
+  ['BN', 'brunei'], ['BG', 'bulgaria'], ['BF', 'burkina faso'], ['BI', 'burundi'], ['CV', 'cabo verde'], ['KH', 'cambodia'],
+  ['CM', 'cameroon'], ['CA', 'canada'], ['CF', 'central african republic'], ['TD', 'chad'], ['CL', 'chile'], ['CN', 'china'],
+  ['CO', 'colombia'], ['KM', 'comoros'], ['CG', 'congo-brazzaville'], ['CD', 'congo-kinshasa'], ['CR', 'costa rica'],
+  ['HR', 'croatia'], ['CU', 'cuba'], ['CY', 'cyprus'], ['CZ', 'czechia'], ['DK', 'denmark'], ['DJ', 'djibouti'],
+  ['DM', 'dominica'], ['DO', 'dominican republic'], ['EC', 'ecuador'], ['EG', 'egypt'], ['SV', 'el salvador'],
+  ['GQ', 'equatorial guinea'], ['ER', 'eritrea'], ['EE', 'estonia'], ['SZ', 'eswatini'], ['ET', 'ethiopia'], ['FJ', 'fiji'],
+  ['FI', 'finland'], ['FR', 'france'], ['GA', 'gabon'], ['GM', 'gambia'], ['GE', 'georgia'], ['DE', 'germany'], ['GH', 'ghana'],
+  ['GR', 'greece'], ['GD', 'grenada'], ['GT', 'guatemala'], ['GN', 'guinea'], ['GW', 'guinea-bissau'], ['GY', 'guyana'],
+  ['HT', 'haiti'], ['HN', 'honduras'], ['HU', 'hungary'], ['IS', 'iceland'], ['IN', 'india'], ['ID', 'indonesia'],
+  ['IR', 'iran'], ['IQ', 'iraq'], ['IE', 'ireland'], ['IL', 'israel'], ['IT', 'italy'], ['CI', 'ivory coast'],
+  ['JM', 'jamaica'], ['JP', 'japan'], ['JO', 'jordan'], ['KZ', 'kazakhstan'], ['KE', 'kenya'], ['KI', 'kiribati'],
+  ['KW', 'kuwait'], ['KG', 'kyrgyzstan'], ['LA', 'laos'], ['LV', 'latvia'], ['LB', 'lebanon'], ['LS', 'lesotho'],
+  ['LR', 'liberia'], ['LY', 'libya'], ['LI', 'liechtenstein'], ['LT', 'lithuania'], ['LU', 'luxembourg'],
+  ['MG', 'madagascar'], ['MW', 'malawi'], ['MY', 'malaysia'], ['MV', 'maldives'], ['ML', 'mali'], ['MT', 'malta'],
+  ['MH', 'marshall islands'], ['MR', 'mauritania'], ['MU', 'mauritius'], ['MX', 'mexico'], ['FM', 'micronesia'],
+  ['MD', 'moldova'], ['MC', 'monaco'], ['MN', 'mongolia'], ['ME', 'montenegro'], ['MA', 'morocco'], ['MZ', 'mozambique'],
+  ['MM', 'myanmar'], ['NA', 'namibia'], ['NR', 'nauru'], ['NP', 'nepal'], ['NL', 'netherlands'], ['NZ', 'new zealand'],
+  ['NI', 'nicaragua'], ['NE', 'niger'], ['NG', 'nigeria'], ['KP', 'north korea'], ['MK', 'north macedonia'], ['NO', 'norway'],
+  ['OM', 'oman'], ['PK', 'pakistan'], ['PW', 'palau'], ['PA', 'panama'], ['PG', 'papua new guinea'], ['PY', 'paraguay'],
+  ['PE', 'peru'], ['PH', 'philippines'], ['PL', 'poland'], ['PT', 'portugal'], ['QA', 'qatar'], ['RO', 'romania'],
+  ['RU', 'russia'], ['RW', 'rwanda'], ['KN', 'saint kitts and nevis'], ['LC', 'saint lucia'],
+  ['VC', 'saint vincent and the grenadines'], ['WS', 'samoa'], ['SM', 'san marino'], ['ST', 'sao tome and principe'],
+  ['SA', 'saudi arabia'], ['SN', 'senegal'], ['RS', 'serbia'], ['SC', 'seychelles'], ['SL', 'sierra leone'],
+  ['SG', 'singapore'], ['SK', 'slovakia'], ['SI', 'slovenia'], ['SB', 'solomon islands'], ['SO', 'somalia'],
+  ['ZA', 'south africa'], ['KR', 'south korea'], ['SS', 'south sudan'], ['ES', 'spain'], ['LK', 'sri lanka'],
+  ['SD', 'sudan'], ['SR', 'suriname'], ['SE', 'sweden'], ['CH', 'switzerland'], ['SY', 'syria'], ['TJ', 'tajikistan'],
+  ['TZ', 'tanzania'], ['TH', 'thailand'], ['TL', 'timor-leste'], ['TG', 'togo'], ['TO', 'tonga'],
+  ['TT', 'trinidad and tobago'], ['TN', 'tunisia'], ['TR', 'turkey'], ['TM', 'turkmenistan'], ['TV', 'tuvalu'],
+  ['UG', 'uganda'], ['UA', 'ukraine'], ['AE', 'united arab emirates'], ['GB', 'united kingdom'], ['US', 'united states'],
+  ['UY', 'uruguay'], ['UZ', 'uzbekistan'], ['VU', 'vanuatu'], ['VE', 'venezuela'], ['VN', 'vietnam'], ['YE', 'yemen'],
+  ['ZM', 'zambia'], ['ZW', 'zimbabwe'],
+];
+export const FLAGS = G('country flags', COUNTRIES.map(([code, name]) => [flagOf(code), `${name} flag`]));
+
 // A deterministic subset of `n` emoji (or all of them), so a smaller pile is the same pile every time.
 export function subset(n, items = EMOJIS) {
   if (n >= items.length) return items.slice();
@@ -86,6 +133,26 @@ export function toRequest(query, items) {
 
 // Probability of a match for every emoji, in the order of `items`.
 export const scores = (answers, items) => items.map((e, i) => ({ ...e, index: i, p: Math.min(1, Math.max(0, +answers[`e${i}`].noul)) }));
+
+// An additional strategy: one `choice` question with every emoji as an option, instead of one yes/no question per
+// emoji. A choice question forces a softmax over the whole candidate set, so it can come out more decisive than
+// many independent yes/no calls (each of which can land near 50/50 on its own) — but it is one shared judgement,
+// not `n` independent ones, so its shape suits "which one is closest" better than "how many of these match".
+export const MAX_CHOICE_OPTIONS = 255; // the choice question type's own limit
+export function toRequestChoice(query, items) {
+  const q = String(query).trim();
+  if (!q) throw new Error('type something first');
+  if (items.length < 2 || items.length > MAX_CHOICE_OPTIONS) throw new Error(`a choice question takes 2-${MAX_CHOICE_OPTIONS} emoji`);
+  if (new Set(items.map(e => e.name)).size !== items.length) throw new Error('emoji names must be unique for the choice strategy');
+  return { state: q, questions: { pick: { type: 'choice', instructions: 'Which of these best matches this?', criteria: Object.fromEntries(items.map(e => [e.name, null])) } } };
+}
+
+// Same {...e, index, p} shape as scores(), read from the one choice answer's probabilities (keyed by name) instead
+// of one noul answer per emoji, so every downstream function (pickMatches, targets, ...) works unchanged.
+export function scoresFromChoice(answer, items) {
+  const probs = answer.pick.probabilities;
+  return items.map((e, i) => ({ ...e, index: i, p: Math.min(1, Math.max(0, +(probs[e.name] || 0))) }));
+}
 
 // The emoji that float up: probability at or above `threshold`, best first, at most `max`.
 export function matches(list, threshold = 0.5, max = 24) {

@@ -22,7 +22,7 @@ def serve_cmd(models: Annotated[list[str] | None, typer.Option("--model", "-m", 
               device: str = typer.Option(None, help="Device to run on (cuda/mps/cpu/auto); default from settings"),
               host: str = typer.Option(None, help="Host to bind to; default from settings"),
               port: int = typer.Option(None, help="Port to bind to; default from settings"),
-              backend: str = typer.Option("", help="Force a backend (encoder | lm | clm) instead of auto-detecting"),
+              backend: str = typer.Option("", help="Force a backend (encoder | lm | clm | gliner) instead of auto-detecting"),
               dtype: str = typer.Option("auto", help="lm/clm backends: auto | float32 | bfloat16 | float16"),
               lazy: bool = typer.Option(None, "--lazy/--no-lazy", help="Load each model on its first request instead of at startup; default from settings when serving the settings list, otherwise off"),
               head_tokens: int = typer.Option(None, help="encoder backend: token budget shared by the instructions and ALL options (0 keeps the trained 192); default from settings"),
@@ -37,8 +37,8 @@ def serve_cmd(models: Annotated[list[str] | None, typer.Option("--model", "-m", 
     import uvicorn
 
     from decida import settings as st
-    if backend and backend not in ("encoder", "lm", "clm", "remote"):
-        raise typer.BadParameter("backend must be encoder, lm, clm or remote")
+    if backend and backend not in ("encoder", "lm", "clm", "gliner", "remote"):
+        raise typer.BadParameter("backend must be encoder, lm, clm, gliner or remote")
     models = models or []
     cfg, created = _load_settings(create=not models)   # an explicit -m never writes a settings file
     if models:
