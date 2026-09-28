@@ -1,8 +1,9 @@
-# Decida command line, and everything else that didn't fit in the README
+# Decida documentation
 
-Every `decida` command, in depth, with examples. See [README.md](README.md) for install and a two-minute start,
-and [MCP.md](MCP.md) for the MCP server. `decida help` (or `decida --help`) prints the same command list from the
-CLI itself; `decida <command> --help` prints that command's full flag list.
+Every `decida` command in depth, with examples, plus the models, the REST API, the testbench, results, settings
+and everything else that did not fit in a short README. See [README.md](README.md) for install and a two-minute
+start, and [MCP.md](MCP.md) for the MCP server. `decida help` (or `decida --help`) prints the same command list
+from the CLI itself; `decida <command> --help` prints that command's full flag list.
 
 ## Commands
 
@@ -20,17 +21,17 @@ decida serve -m decidabert=helmo/DecidaBERT-large --port 8010 --device cpu      
 - `--device`, `--host`, `--port`: override the settings.json values for this run only.
 - `--backend`: force `encoder | lm | clm | gliner | remote` instead of auto-detecting (`decida detect` shows what auto-detection would pick).
 - `--dtype`: `auto | float32 | bfloat16 | float16`, for the `lm`/`clm` backends.
-- `--lazy`/`--no-lazy`: load each model on its first request instead of at startup. Default: settings.json's own value when serving that list, off otherwise. `--no-lazy` downloads **and loads** every configured model before the server accepts requests — only use it if you have the RAM/VRAM for all of them at once, since Decida does not check that a model fits before loading it.
+- `--lazy`/`--no-lazy`: load each model on its first request instead of at startup. Default: settings.json's own value when serving that list, off otherwise. `--no-lazy` downloads **and loads** every configured model before the server accepts requests. Only use it if you have the RAM/VRAM for all of them at once, since Decida does not check that a model fits before loading it.
 - `--head-tokens`, `--option-tokens`, `--max-len`: encoder-backend token budgets (0 keeps the model's trained defaults).
 - `--remote-budget-usd`, `--remote-price-per-m`, `--remote-key-env`: hosted-model spend controls (see "Hosted models" below).
 
 **Which model is the default** (used when a request omits `model`, or an MCP tool call): whichever one registers first, which is the first entry in the `--model` list, or the first entry in `settings.json` when none is given. Change it with `decida setup --default <alias>` rather than reordering flags by hand.
 
-**Finding a running server**: on startup, `decida serve` writes `~/.decida/running.json` (host, port, pid) — this is how `decida mcp` finds it automatically without `DECIDA_URL` (see MCP.md), and how `decida ps`'s default URL could be extended to do the same later.
+**Finding a running server**: on startup, `decida serve` writes `~/.decida/running.json` (host, port, pid). This is how `decida mcp` finds it automatically without `DECIDA_URL` (see MCP.md), and how `decida ps`'s default URL could be extended to do the same later.
 
 ### `decida setup`
 
-Choose which models Decida serves — an interactive menu, or scriptable flags. Saved to `~/.decida/settings.json`.
+Choose which models Decida serves: an interactive menu, or scriptable flags. Saved to `~/.decida/settings.json`.
 
 ```bash
 decida setup                                    # interactive: add/remove/make-default/reset/port/lazy
@@ -48,7 +49,7 @@ Flags can combine in one call (`decida setup --remove jev --add someone/x --defa
 
 ### `decida list`
 
-Models in `settings.json` and whether each is downloaded — **no server, no network call** (reads the local Hugging Face cache directly).
+Models in `settings.json` and whether each is downloaded. **No server, no network call**: it reads the local Hugging Face cache directly.
 
 ```bash
 $ decida list
@@ -62,7 +63,7 @@ jev                   -             -         hosted       https://api.typesafe.
 
 ### `decida ps`
 
-Models loaded by a **running** `decida serve` — the ollama-style counterpart to `list`.
+Models loaded by a **running** `decida serve`, the ollama-style counterpart to `list`.
 
 ```bash
 $ decida ps
@@ -76,7 +77,7 @@ $ decida ps
 
 ### `decida pull`
 
-Download models to the Hugging Face cache **without loading them into RAM or VRAM** — handy on a slow link, or before going offline. Re-running it on an already-cached model is a fast no-op, so it also doubles as a "is this downloaded?" check.
+Download models to the Hugging Face cache **without loading them into RAM or VRAM**. Handy on a slow link, or before going offline. Re-running it on an already-cached model is a fast no-op, so it also doubles as an "is this downloaded?" check.
 
 ```bash
 decida pull                                          # every local model in settings.json
@@ -84,11 +85,11 @@ decida pull helmo/DecidaBERT-large helmo/Qwen3-0.6B  # only these
 decida pull mymodel=someone/some-model               # an ad-hoc ref not in settings.json at all
 ```
 
-This never touches `settings.json` — pulling a model does not by itself make `decida serve` serve it; the command prints the exact next step (`decida serve --model ...` or `decida setup --add ...`) for anything it pulled that wasn't already configured.
+This never touches `settings.json`. Pulling a model does not by itself make `decida serve` serve it; the command prints the exact next step (`decida serve --model ...` or `decida setup --add ...`) for anything it pulled that wasn't already configured.
 
 ### `decida detect`
 
-Show which backend would serve a model, and why — **reads file names and small config files only**, no weights downloaded, no code from the repo executed.
+Show which backend would serve a model, and why. **Reads file names and small config files only**: no weights downloaded, no code from the repo executed.
 
 ```bash
 $ decida detect helmo/laya:typed-decisions
@@ -115,7 +116,7 @@ decida check helmo/DecidaBERT-large --device cuda --verbose   # print each indiv
 
 ### `decida predict`
 
-One prediction, entirely local, no server — two JSON files in, one JSON response out.
+One prediction, entirely local, no server: two JSON files in, one JSON response out.
 
 ```bash
 decida predict --model helmo/DecidaBERT-large --state state.json --questions questions.json
@@ -134,7 +135,7 @@ decida data download wikispeedia   # about 840 MB
 
 ### `decida mcp`
 
-Runs the MCP stdio server. See [MCP.md](MCP.md) — it's not an interactive command (it blocks on stdin waiting for an MCP client), covers how to try it including a browser UI with no client config, and documents every tool with examples.
+Runs the MCP stdio server. See [MCP.md](MCP.md): it's not an interactive command (it blocks on stdin waiting for an MCP client), covers how to try it including a browser UI with no client config, and documents every tool with examples.
 
 ### `decida help` / `decida --help` / `decida --version`
 
@@ -179,7 +180,7 @@ curl -s localhost:8000/v1/systemone -H 'content-type: application/json' -d '{
 | `GET /v1/device`, `GET /metrics`, `GET /health` | device and memory, latency percentiles, liveness |
 | `GET /v1/datasets`, `POST /v1/datasets/{id}/download` | the data the benches use |
 
-The MCP server (`decida mcp`) gives a coding agent `gate_tool_call`, `vet_dependency`, `triage_failure`, `classify_text` and a raw `decide` tool — see [MCP.md](MCP.md).
+The MCP server (`decida mcp`) gives a coding agent `gate_tool_call`, `vet_dependency`, `triage_failure`, `classify_text` and a raw `decide` tool. See [MCP.md](MCP.md).
 
 ## The testbench
 
@@ -253,7 +254,7 @@ The tests that need a tokenizer fetch the small tokenizer files of `helmo/Decida
 
 Tested on AMD Ryzen AI Max+ 395 (Radeon 8060S, gfx1151, Strix Halo APU) with Ubuntu and ROCm 10.0. DecidaBERT-large: ~43 ms per request on the AMD GPU vs ~370 ms on the same box's CPU (n=3 warm runs, 2 questions each).
 
-AMD's ROCm stack maps `torch.cuda.*` calls to the AMD GPU through HIP, so Decida's CUDA path handles AMD without code changes. The standard install resolves `torch` to a CUDA-only wheel; use **AMD's own index** (`stable.repo.amd.com/rocm/whl-next/`) — it ships gfx1151-specific kernels and does not have the Strix Halo segfault in the PyTorch-distributed ROCm 7.1/7.2 wheels. The short version of the global-install step is in the README; here is the full picture.
+AMD's ROCm stack maps `torch.cuda.*` calls to the AMD GPU through HIP, so Decida's CUDA path handles AMD without code changes. The standard install resolves `torch` to a CUDA-only wheel; use **AMD's own index** (`stable.repo.amd.com/rocm/whl-next/`): it ships gfx1151-specific kernels and does not have the Strix Halo segfault in the PyTorch-distributed ROCm 7.1/7.2 wheels. The short version of the global-install step is in the README; here is the full picture.
 
 **Global install (`uv tool install`):**
 
@@ -300,7 +301,7 @@ uv run --no-sync decida serve
 uv run --no-sync decida check helmo/DecidaBERT-large --device cuda
 ```
 
-Do not edit `pyproject.toml`'s torch dependency to point at an AMD index — that would break every non-AMD Linux user and CI.
+Do not edit `pyproject.toml`'s torch dependency to point at an AMD index: that would break every non-AMD Linux user and CI.
 
 ## Limitations
 

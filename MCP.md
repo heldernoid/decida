@@ -9,22 +9,22 @@ request and forwards it.
 
 A `decida serve` must already be running. `decida mcp` finds it automatically, in this order:
 
-1. `DECIDA_URL`, if set (e.g. `http://localhost:8010`) — always wins.
+1. `DECIDA_URL`, if set (e.g. `http://localhost:8010`), always wins.
 2. Otherwise, the host:port of whichever `decida serve` last started and is still running. `decida serve` records
    this in `~/.decida/running.json` on startup (`settings.write_running`); a stale entry left by a process that has
    since exited is ignored. This is what makes `decida mcp` work with no configuration even when `serve` is not on
-   its default port — `--port` is never written to `settings.json`, so without this it would be untraceable.
+   its default port: `--port` is never written to `settings.json`, so without this it would be untraceable.
 3. Otherwise, `decida serve`'s own default port, `http://localhost:8000`.
 
 In practice: on one machine with one `decida serve` running, you never need to set anything. `DECIDA_URL` exists
 for a remote server, several local servers where you want a specific one, or a client (like a browser-based MCP
-Inspector) that does not reliably forward your shell's exported environment to the subprocess it launches — some
+Inspector) that does not reliably forward your shell's exported environment to the subprocess it launches. Some
 versions of MCP Inspector have their own separate "Environment Variables" field in the connection UI for exactly
 this; if `decida mcp` still fails to connect after exporting `DECIDA_URL` in your shell, check there first.
 
 ## It is not an interactive command
 
-`decida mcp` prints nothing and appears to hang when run bare in a terminal — that is correct. It blocks on
+`decida mcp` prints nothing and appears to hang when run bare in a terminal. That is correct. It blocks on
 `sys.stdin` waiting for JSON-RPC requests from an MCP client; anything it printed on its own would corrupt the
 protocol stream a real client is parsing. Two ways to actually see it do something:
 
@@ -58,8 +58,8 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"classify_t
 
 ## The tools
 
-Every tool answers using **the server's default model** (whichever one is starred in `decida ps`) — there is
-currently no per-call way to pick a different one; see "Model selection" below. Every tool's response includes
+Every tool answers using **the server's default model** (whichever one is starred in `decida ps`); there is
+currently no per-call way to pick a different one. See "Model selection" below. Every tool's response includes
 `"model"`, naming exactly which one answered, so the caller is never left guessing.
 
 ### `gate_tool_call`
