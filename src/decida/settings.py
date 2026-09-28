@@ -106,6 +106,38 @@ def path() -> Path:
     return home() / "settings.json"
 
 
+def running_path() -> Path:
+    return home() / "running.json"
+
+
+def write_running(host: str, port: int) -> None:
+    """Record which host:port this `decida serve` process is actually bound to, so a separate `decida mcp` process
+    (or any other local tool) can find it without an env var — `--port` is never written to settings.json, so it
+    would otherwise be untraceable once anything other than the default port is used. Overwritten on every
+    `decida serve` start; a stale entry left behind by a process that has since exited is ignored by
+    `read_running()`, not by removing the file here (there is no reliable place to hook a clean shutdown)."""
+    connect_host = "127.0.0.1" if host in ("0.0.0.0", "::", "") else host  # a bind-all address is not a destination
+    f = running_path()
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps({"host": connect_host, "port": port, "pid": os.getpid()}))
+
+
+def read_running() -> tuple[str, int] | None:
+    """(host, port) of the most recently started `decida serve` that is still running, or None."""
+    try:
+        data = json.loads(running_path().read_text())
+        pid = data["pid"]
+    except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError):
+        return None
+    try:
+        os.kill(pid, 0)  # signal 0: alive-check only, does not actually signal the process
+    except ProcessLookupError:
+        return None
+    except OSError:
+        pass  # alive, just not ours (e.g. owned by another user) - treat as running
+    return data["host"], data["port"]
+
+
 def load(create: bool = True) -> tuple[Settings, bool]:
     """The settings, and whether the file was just created with the defaults. A damaged file is reported, never overwritten."""
     f = path()
@@ -151,6 +183,18 @@ def remove_model(s: Settings, alias_or_number: str) -> ModelSpec:
         if m.alias == key:
             return s.models.pop(i)
     raise SettingsError(f"no model {alias_or_number!r} in the list; the aliases are: {', '.join(m.alias for m in s.models) or 'none'}")
+
+
+def set_default(s: Settings, alias_or_number: str) -> ModelSpec:
+    """Move a model (alias, or its 1-based number) to the front of the list: `decida serve` registers models in
+    list order and its default is whichever one registers first (`runtime/store.py`'s `ModelStore.add`)."""
+    key = alias_or_number.strip().lower()
+    idx = int(key) - 1 if key.isdigit() and 1 <= int(key) <= len(s.models) else next((i for i, m in enumerate(s.models) if m.alias == key), None)
+    if idx is None:
+        raise SettingsError(f"no model {alias_or_number!r} in the list; the aliases are: {', '.join(m.alias for m in s.models) or 'none'}")
+    spec = s.models.pop(idx)
+    s.models.insert(0, spec)
+    return spec
 
 
 def serve_specs(s: Settings, environ: dict[str, str] | None = None) -> tuple[list[str], list[str]]:

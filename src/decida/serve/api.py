@@ -199,13 +199,12 @@ class NoCacheStatic(StaticFiles):
 
 app.include_router(data_router)
 
-PAGES = ("/", "/models", "/playground", "/under-the-hood", "/testbench", "/api")   # the home page shows one section per URL; keep in step with its nav
+PAGES = ("/", "/models", "/playground", "/testbench", "/api")   # the home page shows one section per URL; keep in step with its nav
 
 
 @app.get("/", include_in_schema=False)
 @app.get("/models", include_in_schema=False)
 @app.get("/playground", include_in_schema=False)
-@app.get("/under-the-hood", include_in_schema=False)
 @app.get("/testbench", include_in_schema=False)
 @app.get("/api", include_in_schema=False)
 async def home():

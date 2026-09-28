@@ -4,7 +4,25 @@ from typing import Annotated
 
 import typer
 
-app = typer.Typer(help="Decida: a runtime for System One decision models (REST, MCP, testbench).")
+app = typer.Typer(help="Decida: a runtime for System One decision models (REST, MCP, testbench).", no_args_is_help=True)
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        from importlib.metadata import version
+        typer.echo(version("decida"))
+        raise typer.Exit()
+
+
+@app.callback()
+def main(version: Annotated[bool, typer.Option("--version", callback=_version_callback, is_eager=True, help="Show the installed version and exit")] = False) -> None:
+    pass
+
+
+@app.command("help")
+def help_cmd(ctx: typer.Context) -> None:
+    """Show this help message."""
+    typer.echo((ctx.parent or ctx).get_help())
 
 
 def _load_settings(create: bool):
@@ -67,6 +85,7 @@ def serve_cmd(models: Annotated[list[str] | None, typer.Option("--model", "-m", 
                       ("DECIDA_MAX_LEN", pick(max_len, srv.max_len))):
         if val:
             os.environ[name] = str(val)
+    st.write_running(host, port)
     typer.echo(f"Starting Decida on {host}:{port} with {', '.join(x.split('=')[0] if '=' in x and not x.startswith('http') else x for x in specs)}")
     uvicorn.run("decida.serve.api:app", host=host, port=port)
 
@@ -94,9 +113,9 @@ def _check_model(ref: str) -> tuple[bool, str]:
 def _print_models(cfg) -> None:
     import os
     for i, m in enumerate(cfg.models, 1):
-        tag = ""
+        tag = "  [default]" if i == 1 else ""  # decida serve registers models in list order; the first one registered is the default (runtime/store.py)
         if m.hosted:
-            tag = f"  [hosted; {cfg.hosted.key_env} {'is set' if os.environ.get(cfg.hosted.key_env) else 'is NOT set'}]"
+            tag += f"  [hosted; {cfg.hosted.key_env} {'is set' if os.environ.get(cfg.hosted.key_env) else 'is NOT set'}]"
         typer.echo(f"  {i}. {m.alias:<22} {m.ref}{tag}")
 
 
@@ -121,6 +140,7 @@ def _add(cfg, text: str, check: bool, ask: bool) -> bool:
 def setup_cmd(add: Annotated[list[str] | None, typer.Option("--add", help="Add a model: username/model-id, username/model-id:folder, a local folder, or alias=ref. Repeat for several")] = None,
               remove: Annotated[list[str] | None, typer.Option("--remove", help="Remove a model by alias or number. Repeat for several")] = None,
               reset: bool = typer.Option(False, "--reset", help="Restore the default list of models"),
+              default: str = typer.Option(None, "--default", help="Move a model (alias or number) to the front of the list: it becomes decida serve's default"),
               list_: bool = typer.Option(False, "--list", help="Show the models in the settings and exit"),
               show_path: bool = typer.Option(False, "--path", help="Print the settings file location and exit"),
               no_check: bool = typer.Option(False, "--no-check", help="Add models without asking the Hub about them first (offline)")):
@@ -133,7 +153,7 @@ def setup_cmd(add: Annotated[list[str] | None, typer.Option("--add", help="Add a
     if created is False and not st.path().exists():
         typer.echo(f"No settings yet at {st.path()}; starting from the default models.")
     add, remove = add or [], remove or []
-    scripted = bool(add or remove or reset or list_)
+    scripted = bool(add or remove or reset or default or list_)
     if list_:
         _print_models(cfg)
         return
@@ -153,6 +173,13 @@ def setup_cmd(add: Annotated[list[str] | None, typer.Option("--add", help="Add a
         if not _add(cfg, a, check=not no_check, ask=False):
             raise typer.Exit(1)
         changed = True
+    if default:
+        try:
+            typer.echo(f"default is now {st.set_default(cfg, default).alias}")
+            changed = True
+        except st.SettingsError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(1) from exc
     if scripted:
         if changed:
             typer.echo(f"Saved {st.save(cfg)}")
@@ -164,7 +191,7 @@ def setup_cmd(add: Annotated[list[str] | None, typer.Option("--add", help="Add a
     while True:
         typer.echo("Models Decida serves:")
         _print_models(cfg)
-        typer.echo("\n  [a] add a model   [r] remove a model   [d] restore the default list   [p] port and loading   [q] save and quit")
+        typer.echo("\n  [a] add a model   [r] remove a model   [m] make one the default   [d] restore the default list   [p] port and loading   [q] save and quit")
         choice = typer.prompt("> ", default="q", show_default=False).strip().lower()
         if choice in ("q", "quit", ""):
             break
@@ -179,6 +206,13 @@ def setup_cmd(add: Annotated[list[str] | None, typer.Option("--add", help="Add a
                 changed = True
             except st.SettingsError as exc:
                 typer.echo(f"  {exc}")
+        elif choice == "m":
+            key = typer.prompt("Which one? (alias or number)").strip()
+            try:
+                typer.echo(f"  default is now {st.set_default(cfg, key).alias}")
+                changed = True
+            except st.SettingsError as exc:
+                typer.echo(f"  {exc}")
         elif choice == "d":
             if typer.confirm("Replace the list with the defaults?", default=False):
                 cfg.models = st.default_models()
@@ -188,22 +222,99 @@ def setup_cmd(add: Annotated[list[str] | None, typer.Option("--add", help="Add a
             cfg.server.lazy = typer.confirm("Load each model on its first request instead of at startup?", default=cfg.server.lazy)
             changed = True
         else:
-            typer.echo("  choose a, r, d, p or q")
+            typer.echo("  choose a, r, m, d, p or q")
         typer.echo("")
     st.save(cfg)
     typer.echo(f"Saved {st.path()}. Start the server with: decida serve")
 
 
+def _human_size(n: int) -> str:
+    size = float(n)
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{int(size)} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} GB"  # unreachable, keeps type checkers happy
+
+
+def _dir_size(path) -> int:
+    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+
+
+def _model_row(ref: str) -> tuple[str, str, str]:
+    """(id, size, modified) for `ref`, without downloading it or calling the Hub. `id`/`size` are "-" when there is
+    nothing on disk to measure; `modified` then carries the reason instead (hosted / local / not downloaded / ...)."""
+    from decida.runtime.refs import is_url, split_ref
+    if is_url(ref):
+        return "-", "-", "hosted"
+    from pathlib import Path
+    repo, folder = split_ref(ref)
+    local = Path(repo).expanduser()
+    if local.exists():
+        return "-", _human_size(_dir_size(local / folder if folder else local)), "local"
+    try:
+        from huggingface_hub import scan_cache_dir
+        from huggingface_hub.errors import CacheNotFound
+    except ImportError:
+        return "-", "-", "unknown (huggingface_hub not installed)"
+    try:
+        info = scan_cache_dir()
+    except CacheNotFound:
+        return "-", "-", "not downloaded"
+    for r in info.repos:
+        if r.repo_type != "model" or r.repo_id != repo:
+            continue
+        rev = max(r.revisions, key=lambda v: v.last_modified)  # the most recently touched snapshot
+        if not folder:
+            return rev.commit_hash[:12], _human_size(r.size_on_disk), r.last_modified_str
+        sub = Path(rev.snapshot_path, folder)
+        if not sub.is_dir() or not any(sub.iterdir()):
+            return "-", "-", "partial (repo cached, not this folder)"
+        return rev.commit_hash[:12], _human_size(_dir_size(sub)), rev.last_modified_str
+    return "-", "-", "not downloaded"
+
+
+def _print_table(headers: tuple[str, ...], rows: list[tuple[str, ...]]) -> None:
+    """An ollama-`list`-style aligned table: every column but the last is left-justified to its widest cell; the
+    last column (always a ref/URL here, which can be long) is never padded."""
+    if not rows:
+        widths = [len(h) for h in headers[:-1]]
+    else:
+        widths = [max(len(h), *(len(row[i]) for row in rows)) for i, h in enumerate(headers[:-1])]
+    line = lambda cells: "  ".join(c.ljust(w) for c, w in zip(cells, widths)) + ("  " + cells[-1] if len(cells) > len(widths) else "")
+    typer.echo(line(headers))
+    for row in rows:
+        typer.echo(line(row))
+
+
 @app.command("list")
-def list_cmd(url: str = typer.Option("http://127.0.0.1:8000", help="Running Decida server")):
-    """List the models served by a running Decida server."""
+def list_cmd():
+    """List the models in settings.json and whether each has been downloaded (like `decida pull`, this never loads a model)."""
+    cfg, _ = _load_settings(create=True)
+    if not cfg.models:
+        typer.echo("no models in settings.json; run `decida setup` to add some")
+        return
+    rows = [(m.alias, *_model_row(m.ref), m.ref) for m in cfg.models]
+    _print_table(("NAME", "ID", "SIZE", "MODIFIED", "REF"), rows)
+
+
+@app.command("ps")
+def ps_cmd(url: str = typer.Option("http://127.0.0.1:8000", help="Running Decida server")):
+    """List the models loaded by a running `decida serve`."""
     import json
+    import urllib.error
     import urllib.request
-    with urllib.request.urlopen(f"{url}/v1/models") as r:
-        data = json.load(r)
-    for m in data["models"]:
-        star = "*" if m["name"] == data["default"] else " "
-        typer.echo(f"{star} {m['name']:<28} {m['backend']:<8} {m['status']:<8} {m['device']:<5} {m['quality_mode']:<10} {m['ref']}")
+    try:
+        with urllib.request.urlopen(f"{url}/v1/models") as r:
+            data = json.load(r)
+    except (urllib.error.URLError, ConnectionError, TimeoutError) as exc:
+        typer.echo(f"error: could not reach {url} ({exc}). Is `decida serve` running?", err=True)
+        raise typer.Exit(1) from exc
+    except json.JSONDecodeError as exc:
+        typer.echo(f"error: {url} did not return valid JSON; is it a Decida server?", err=True)
+        raise typer.Exit(1) from exc
+    rows = [("*" if m["name"] == data["default"] else "", m["name"], m["backend"], m["status"], m["device"], m["quality_mode"], m["ref"]) for m in data["models"]]
+    _print_table(("", "NAME", "BACKEND", "STATUS", "DEVICE", "MODE", "REF"), rows)
 
 
 @app.command("data")
