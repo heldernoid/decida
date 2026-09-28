@@ -240,6 +240,40 @@ Decida is an independent project and is not affiliated with TypeSafe, Convai Inn
 
 What the testbench showed, model after model: put the state in words and never in raw numbers; ask what the text says, not what to do; describe every option, because the option text is what the model matches against; keep option lists short and only offer options that are reachable; and let your own code do the measuring and choosing, using the model for perception questions. Watch `x_decida.truncation` in the response to see whether any text was cut.
 
+### CLM's cache makes this principle non-optional, not just good practice
+
+The CLM backend (`serve/clm_engine.py`) caches every embedding it computes, keyed on the exact text of `state`
+combined with a question's `instructions`. Identical text is a free dictionary lookup; anything new pays a full
+forward pass through the frozen base model (8B parameters for `CLM-v0.1-8B`). Measured directly against a real
+CLM checkpoint:
+
+| pattern | first call | steady state |
+|---|---|---|
+| identical state text repeated (Dino's rounded, mostly-fixed state) | 1064 ms | 2-3 ms |
+| continuously varying state text (`toFixed(1)` altitude, unique every call) | 98 ms | ~64 ms, every call |
+
+Benches whose state (or per-question instructions) is quantized into words that repeat across calls, like Dino's
+integer-rounded distance and single dominant "clear track" string, get a high cache-hit rate and answer in a few
+milliseconds. Benches that encode a continuously changing value (Flappy's `toFixed(1)` altitude, Snake's raw head
+and food coordinates, Candies sorter's per-candy colour reading in `instructions` even though its `state` is
+fixed) get close to a 0% hit rate: every call is a full forward pass. Measured: 8 candies in one batch took 796 ms,
+32 candies took 1945 ms (sublinear thanks to CLM's own token-budget batching, but still seconds, not the
+near-instant batched response the encoder/LM backends give the same request).
+
+This is not CLM being a worse judge. Isolated, single calls with no time pressure pick the objectively correct,
+safe move confidently (measured: 72% and 66% on two clear-cut Snake positions, correctly avoiding an unsafe
+wall-hit option at 0.6%). Flappy and Snake are real-time games with a fixed tick budget (Flappy: every 3 frames,
+50 ms at 60 fps, Lockstep off by default so the game keeps running while an answer is in flight); a model whose
+per-call latency exceeds that budget will look erratic or "crash" because it is reacting to a state that is
+already stale by the time its answer arrives, not because its judgement was wrong for the state it was actually
+given. Candies sorter has no such deadline, so the same cache-miss cost shows up as the bench feeling stuck rather
+than crashing.
+
+The fix, if you want CLM to do well on these benches too, is bench-side: bucket the continuous values into words
+that repeat, the way Dino already does, rather than anything CLM-specific. This has not been done for Flappy or
+Snake; they currently serve as a stress test showing exactly where CLM's design trade-off (a frozen 8B encoder,
+cheap only through caching) breaks down.
+
 ## Development
 
 ```bash
