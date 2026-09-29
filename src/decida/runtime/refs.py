@@ -34,15 +34,46 @@ def alias_for(ref: str) -> str:
     return f"{name}-{folder.replace('/', '-').lower()}" if folder else name
 
 
+def cached_snapshot(repo: str, revision: str | None = None) -> Path | None:
+    """The local Hugging Face cache's snapshot folder for `repo` (a specific `revision`, or its most recently
+    touched one), or None if `repo` is not cached at all. Lets a fully-downloaded model be detected without any
+    network call: `detect()` uses this so `decida serve` on an already-pulled model works offline, instead of
+    `list_repo_files` (no local equivalent to fall back to, unlike `snapshot_download`) failing the whole thing
+    before a single byte is even read from disk.
+    """
+    try:
+        from huggingface_hub import scan_cache_dir
+        from huggingface_hub.errors import CacheNotFound
+    except ImportError:
+        return None
+    try:
+        info = scan_cache_dir()
+    except CacheNotFound:
+        return None
+    for r in info.repos:
+        if r.repo_type != "model" or r.repo_id != repo:
+            continue
+        if revision is None:
+            return max(r.revisions, key=lambda rev: rev.last_modified).snapshot_path
+        return next((rev.snapshot_path for rev in r.revisions if revision in (rev.commit_hash, *rev.refs)), None)
+    return None
+
+
 def local_dir(ref: str, revision: str | None = None) -> Path:
     """The folder on disk that holds the model files for `ref`, downloading them from the Hub if needed (cached after the first time).
 
     Only the folder asked for is downloaded, so `helmo/laya:multilingual` does not fetch the other two checkpoints.
+    Already fully pulled: returned straight from the cache, no network call (see `cached_snapshot`).
     """
     repo, folder = split_ref(ref)
     local = Path(repo).expanduser()
     if local.exists():
         return local / folder if folder else local
+    cached = cached_snapshot(repo, revision)
+    if cached is not None:
+        path = cached / folder if folder else cached
+        if path.is_dir() and any(path.iterdir()):
+            return path
     from huggingface_hub import snapshot_download
 
     if folder:
