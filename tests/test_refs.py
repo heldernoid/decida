@@ -44,6 +44,35 @@ def test_local_dir_for_folders_on_disk(tmp_path):
     assert refs.local_dir(f"{tmp_path / 'laya'}:typed-decisions") == tmp_path / "laya" / "typed-decisions"
 
 
+def test_local_dir_and_detect_use_an_already_cached_snapshot_with_no_network_call(tmp_path, monkeypatch):
+    """A model pulled before is found straight from the Hugging Face cache: no list_repo_files, no snapshot_download,
+    no network at all. This is what lets `decida serve` work with no internet on an already-downloaded model."""
+    import huggingface_hub as hh
+
+    snap = tmp_path / "cached-snapshot"
+    (snap / "typed-decisions").mkdir(parents=True)
+    (snap / "rl_agent_config.json").write_text("{}")
+    (snap / "typed-decisions" / "rl_agent_config.json").write_text("{}")
+    monkeypatch.setattr(refs, "cached_snapshot", lambda repo, revision=None: snap if repo == "helmo/laya" else None)
+
+    def boom(*a, **k):
+        raise AssertionError("should not touch the network when the snapshot is already cached")
+    monkeypatch.setattr(hh, "list_repo_files", boom)
+    monkeypatch.setattr(hh, "snapshot_download", boom)
+    monkeypatch.setattr(hh, "hf_hub_download", boom)
+
+    assert refs.local_dir("helmo/laya") == snap
+    assert refs.local_dir("helmo/laya:typed-decisions") == snap / "typed-decisions"
+    assert detect("helmo/laya").backend == Backend.ENCODER
+    assert detect("helmo/laya:typed-decisions").backend == Backend.ENCODER
+
+
+def test_cached_snapshot_against_the_real_hf_cache_mechanism():
+    """Exercises cached_snapshot() for real (no mocking of huggingface_hub itself): a repo nobody has ever pulled
+    is never cached, whatever this machine's actual cache holds."""
+    assert refs.cached_snapshot("nobody/this-repo-does-not-exist-anywhere") is None
+
+
 @pytest.fixture
 def hub(monkeypatch, tmp_path):
     """A fake Hub: one repo with three checkpoints; records what would be downloaded."""
@@ -67,6 +96,7 @@ def hub(monkeypatch, tmp_path):
     monkeypatch.setattr(hh, "snapshot_download", snapshot_download)
     monkeypatch.setattr(hh, "hf_hub_download", hf_hub_download)
     monkeypatch.setattr(hh, "model_info", lambda repo: type("I", (), {"card_data": type("C", (), {"license": "apache-2.0"})()})())
+    monkeypatch.setattr(refs, "cached_snapshot", lambda repo, revision=None: None)  # exercise the "not yet pulled" path, not this dev machine's real cache
     calls["root"] = root
     return calls
 

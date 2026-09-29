@@ -117,6 +117,11 @@ def detect(ref: str, revision: str | None = None) -> Detection:
     repo, folder = split_ref(ref)                    # `org/name:folder` picks one checkpoint out of a repo that holds several
     local = Path(repo).expanduser()
     is_local = local.exists()
+    if not is_local:
+        from decida.runtime.refs import cached_snapshot
+        cached = cached_snapshot(repo, revision)      # already fully pulled: detect it without any network call
+        if cached is not None:
+            local, is_local = cached, True
     if is_local:
         local = local / folder if folder else local
         files = _local_files(local)
