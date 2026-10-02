@@ -38,22 +38,41 @@ test('sortMail: a model that says "no" to everything gets scored, not silently h
   assert.equal(r.accuracy, 0.75);
 });
 
+// suspiciousLink/hostOf only ever receive the defanged form in real use (every href in EMAILS is stored that way),
+// so these pass defanged literals too, the same as the actual data does.
 test('suspiciousLink: flags a shortener, a raw IP, and a lookalike domain', () => {
-  assert.ok(M.suspiciousLink('http://bit.ly/x9'));
-  assert.ok(M.suspiciousLink('http://192.168.1.5/login'));
-  assert.ok(M.suspiciousLink('http://paypal-secure92.tk/verify'));
-  assert.ok(M.suspiciousLink('http://apple-id-verify.top/unlock'));
+  assert.ok(M.suspiciousLink('httpz[:]//bit[.]ly/x9'));
+  assert.ok(M.suspiciousLink('httpz[:]//192[.]168[.]1[.]5/login'));
+  assert.ok(M.suspiciousLink('httpz[:]//paypal-secure92[.]tk/verify'));
+  assert.ok(M.suspiciousLink('httpz[:]//apple-id-verify[.]top/unlock'));
 });
 
 test('suspiciousLink: flags text/href mismatch even when the text includes a path', () => {
-  const why = M.suspiciousLink('http://netflix-update-payment.tk/billing', 'netflix.com/account');
+  const why = M.suspiciousLink('httpz[:]//netflix-update-payment[.]tk/billing', 'netflix.com/account');
   assert.ok(why && why.includes('netflix.com') && why.includes('netflix-update-payment.tk'));
 });
 
 test('suspiciousLink: a real link with descriptive button text is not flagged', () => {
-  assert.equal(M.suspiciousLink('https://www.amazon.com/gp/your-account/order-history', 'Track package'), null);
-  assert.equal(M.suspiciousLink('https://calendly.com/events/9f2a', 'Add to calendar'), null);
-  assert.equal(M.suspiciousLink('https://www.delta.com/checkin', 'Check in now'), null);
+  assert.equal(M.suspiciousLink('httpzs[:]//www[.]amazon[.]com/gp/your-account/order-history', 'Track package'), null);
+  assert.equal(M.suspiciousLink('httpzs[:]//calendly[.]com/events/9f2a', 'Add to calendar'), null);
+  assert.equal(M.suspiciousLink('httpzs[:]//www[.]delta[.]com/checkin', 'Check in now'), null);
+});
+
+test('defang: scheme and every dot are broken up so nothing auto-links or pastes as a live URL', () => {
+  assert.equal(M.defang('https://google.com'), 'httpzs[:]//google[.]com');
+  assert.equal(M.defang('http://bit.ly/claim-prize-now'), 'httpz[:]//bit[.]ly/claim-prize-now');
+  assert.equal(M.defang('netflix.com/account'), 'netflix[.]com/account'); // bare text with no scheme: dots still broken
+  assert.ok(!M.defang('https://paypal-secure92.tk/verify').includes('http://') && !M.defang('https://paypal-secure92.tk/verify').includes('https://'));
+});
+
+test('every link in every email defangs to something with no live scheme or bare dot left', () => {
+  const live = /https?:\/\//i;
+  for (const e of M.EMAILS) {
+    for (const l of e.links || []) {
+      assert.ok(!live.test(M.defang(l.href)), `${l.href} still has a live scheme after defanging`);
+      assert.ok(!live.test(M.defang(l.text)), `${l.text} still has a live scheme after defanging`);
+    }
+  }
 });
 
 test('every legitimate email’s own links are clean by the same rule used to flag spam ones', () => {
