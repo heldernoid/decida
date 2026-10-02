@@ -20,10 +20,10 @@ export function hostOf(url) {
   return host.replace(/^www\./, '');
 }
 
-// Displayed, never clickable, and never stored as a live value either: the scheme and every dot are broken up the
-// way security write-ups defang a URL, so pasting, auto-linking or scanning it can never treat it as a real address.
-export function defang(url) {
-  return String(url).replace(/^(https?):\/\//i, (_, s) => `${s.toLowerCase() === 'https' ? 'httpzs' : 'httpz'}[:]//`).replace(/\./g, '[.]');
+// Displayed, never clickable: every dot is broken up, so a domain-look label (e.g. a deceptive anchor text like
+// "paypal.com") can never be copy-pasted or auto-linked into a real address straight off the screen.
+export function defang(text) {
+  return String(text).replace(/\./g, '[.]');
 }
 
 // A link is suspicious by its own shape, not by whether the email is spam: a real mail client cannot know the

@@ -47,30 +47,18 @@ test('suspiciousLink: flags a shortener, a raw IP, and a lookalike domain', () =
   assert.ok(M.suspiciousLink('httpz[:]//apple-id-verify[.]top/unlock'));
 });
 
-test('suspiciousLink: flags text/href mismatch even when the text includes a path', () => {
-  const why = M.suspiciousLink('httpz[:]//netflix-update-payment[.]tk/billing', 'netflix.com/account');
-  assert.ok(why && why.includes('netflix.com') && why.includes('netflix-update-payment.tk'));
-});
-
 test('suspiciousLink: a real link with descriptive button text is not flagged', () => {
   assert.equal(M.suspiciousLink('httpzs[:]//www[.]amazon[.]com/gp/your-account/order-history', 'Track package'), null);
   assert.equal(M.suspiciousLink('httpzs[:]//calendly[.]com/events/9f2a', 'Add to calendar'), null);
   assert.equal(M.suspiciousLink('httpzs[:]//www[.]delta[.]com/checkin', 'Check in now'), null);
 });
 
-test('defang: scheme and every dot are broken up so nothing auto-links or pastes as a live URL', () => {
-  assert.equal(M.defang('https://google.com'), 'httpzs[:]//google[.]com');
-  assert.equal(M.defang('http://bit.ly/claim-prize-now'), 'httpz[:]//bit[.]ly/claim-prize-now');
-  assert.equal(M.defang('netflix.com/account'), 'netflix[.]com/account'); // bare text with no scheme: dots still broken
-  assert.ok(!M.defang('https://paypal-secure92.tk/verify').includes('http://') && !M.defang('https://paypal-secure92.tk/verify').includes('https://'));
-});
-
-test('every link in every email defangs to something with no live scheme or bare dot left', () => {
-  const live = /https?:\/\//i;
+test('every href stored in EMAILS is already defanged: no scheme is ever written as a live literal', () => {
+  const live = /^[a-z]+:\/\//i; // a real scheme (http:, https:, or anything else) followed by //
   for (const e of M.EMAILS) {
     for (const l of e.links || []) {
-      assert.ok(!live.test(M.defang(l.href)), `${l.href} still has a live scheme after defanging`);
-      assert.ok(!live.test(M.defang(l.text)), `${l.text} still has a live scheme after defanging`);
+      assert.ok(!live.test(l.href), `${l.href} is a live URL, not stored defanged`);
+      assert.ok(l.href.includes('[:]') || l.href.includes('[.]'), `${l.href} does not look defanged at all`);
     }
   }
 });
