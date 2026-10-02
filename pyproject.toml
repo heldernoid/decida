@@ -1,6 +1,6 @@
 [project]
 name = "decida"
-version = "0.1.9"
+version = "0.1.10"
 description = "A local runtime for System One (decision) models: typed questions, one forward pass, REST and MCP, with a testbench"
 readme = "README.md"
 license = { text = "Apache-2.0" }
