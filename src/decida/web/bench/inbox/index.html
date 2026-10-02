@@ -34,8 +34,9 @@ main{max-width:1500px;grid-template-columns:200px minmax(0,.9fr) minmax(0,1fr) m
 .reader .subj{font-size:16px;font-weight:700;margin:4px 0 10px}
 .reader .body{white-space:pre-wrap;color:var(--ink2);line-height:1.6}
 .linkrow{margin-top:10px}
-.linkrow a{display:inline-block}
-.linkrow .disabled{color:var(--red);text-decoration:line-through;cursor:not-allowed}
+.linkrow .label{display:inline-block;cursor:default;color:var(--ink)}
+.linkrow .label.flagged{color:var(--red);text-decoration:line-through;cursor:not-allowed}
+.linkrow .dest{display:block;font-size:12px;font-family:var(--mono);color:var(--ink3);margin-top:2px}
 .linkrow .why{display:block;font-size:12px;color:var(--red);margin-top:2px}
 .empty{color:var(--ink3);font-size:13.5px;padding:20px 8px}
 </style>
@@ -107,9 +108,8 @@ function renderReader() {
   let linksHtml = '';
   for (const l of e.links || []) {
     const why = M.suspiciousLink(l.href, l.text);
-    linksHtml += why
-      ? `<div class="linkrow"><span class="disabled" title="link disabled">${esc(l.text)}</span><span class="why">Link disabled: ${esc(why)}.</span></div>`
-      : `<div class="linkrow"><a href="${esc(l.href)}" target="_blank" rel="noopener">${esc(l.text)}</a></div>`;
+    linksHtml += `<div class="linkrow"><span class="label${why ? ' flagged' : ''}" title="never clickable in this bench, on purpose">${esc(M.defang(l.text))}</span>` +
+      `<span class="dest">${esc(l.href)}</span>${why ? `<span class="why">Flagged: ${esc(why)}.</span>` : ''}</div>`; // l.href is stored already defanged
   }
   $('#reader').innerHTML = `<div class="from">${esc(e.from)}</div><div class="subj">${esc(e.subject)}</div><div class="body">${esc(e.body)}</div>${linksHtml}`;
 }
