@@ -37,6 +37,23 @@ Replace `gfx1151` with your GPU's architecture (`rocminfo | grep "Name:.*gfx"`).
 
 From a clone of this repository, use `uv sync` and `uv run decida serve` instead.
 
+**Upgrade or uninstall**:
+
+```bash
+uv tool upgrade decida                # the latest version from GitHub
+uv tool uninstall decida              # removes the `decida` command and its environment
+```
+
+An upgrade can put the standard `torch` wheel back, so on an AMD GPU repeat the ROCm step above afterwards. Uninstalling
+leaves your data in place: `~/.decida/` holds the settings and downloaded bench datasets (`rm -rf ~/.decida` removes them),
+and model weights stay in the Hugging Face cache (`~/.cache/huggingface/hub`, or under `$HF_HOME`), shared with other
+tools. To remove one model's weights:
+
+```bash
+uvx --from huggingface_hub hf cache ls                              # what is cached, and how big
+uvx --from huggingface_hub hf cache rm model/helmo/DecidaBERT-large
+```
+
 ## Getting started
 
 The first run creates `~/.decida/settings.json` with a default set of models. By default each model is only downloaded, and then loaded into RAM or VRAM, on its **first request** (a curl, a bench, `decida check`), so a plain `decida serve` returns instantly and touches nothing until you actually use a model.
