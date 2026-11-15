@@ -73,6 +73,27 @@ def test_cached_snapshot_against_the_real_hf_cache_mechanism():
     assert refs.cached_snapshot("nobody/this-repo-does-not-exist-anywhere") is None
 
 
+def test_a_cached_snapshot_without_weights_is_not_taken_for_a_pulled_model(monkeypatch, tmp_path):
+    """Fetching only a model card (any Hugging Face tool does this) leaves a snapshot holding README.md; it must not
+    stand in for the model, or detection sees no model files and the weights are never downloaded."""
+    from types import SimpleNamespace
+
+    import huggingface_hub as hh
+
+    def rev(commit: str, names: list[str], t: float) -> SimpleNamespace:
+        return SimpleNamespace(commit_hash=commit, refs=frozenset(), last_modified=t, snapshot_path=tmp_path / commit,
+                               files=[SimpleNamespace(file_name=n) for n in names])
+
+    card_only = SimpleNamespace(repo_type="model", repo_id="helmo/card-only", revisions=[rev("aaa", ["README.md"], 2.0)])
+    mixed = SimpleNamespace(repo_type="model", repo_id="helmo/mixed",
+                            revisions=[rev("old", ["config.json", "model.safetensors"], 1.0), rev("new", ["README.md"], 3.0)])
+    monkeypatch.setattr(hh, "scan_cache_dir", lambda: SimpleNamespace(repos=[card_only, mixed]))
+    assert refs.cached_snapshot("helmo/card-only") is None
+    assert refs.cached_snapshot("helmo/mixed") == tmp_path / "old", "the newest snapshot that holds weights"
+    assert refs.cached_snapshot("helmo/mixed", "new") is None
+    assert refs.cached_snapshot("helmo/mixed", "old") == tmp_path / "old"
+
+
 @pytest.fixture
 def hub(monkeypatch, tmp_path):
     """A fake Hub: one repo with three checkpoints; records what would be downloaded."""

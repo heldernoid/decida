@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from pathlib import Path, PurePosixPath
 
+WEIGHT_SUFFIXES = (".safetensors", ".bin", ".pt", ".gguf")
 _HUB_WITH_FOLDER = re.compile(r"^([A-Za-z0-9][\w.-]*/[\w.-]+):([\w.-]+(?:/[\w.-]+)*)$")
 
 
@@ -36,8 +37,8 @@ def alias_for(ref: str) -> str:
 
 def cached_snapshot(repo: str, revision: str | None = None) -> Path | None:
     """The local Hugging Face cache's snapshot folder for `repo` (a specific `revision`, or its most recently
-    touched one), or None if `repo` is not cached at all. Lets a fully-downloaded model be detected without any
-    network call: `detect()` uses this so `decida serve` on an already-pulled model works offline, instead of
+    touched one), or None if `repo` is not cached at all, or only some of its small files are (no weights). Lets a
+    fully-downloaded model be detected without any network call: `detect()` uses this so `decida serve` on an already-pulled model works offline, instead of
     `list_repo_files` (no local equivalent to fall back to, unlike `snapshot_download`) failing the whole thing
     before a single byte is even read from disk.
     """
@@ -53,9 +54,12 @@ def cached_snapshot(repo: str, revision: str | None = None) -> Path | None:
     for r in info.repos:
         if r.repo_type != "model" or r.repo_id != repo:
             continue
+        # A snapshot with no weights is only a card or a config fetched on its own (by Decida's detection or any other
+        # Hugging Face tool), not a pulled model; treating it as one would hide the model's real files.
+        pulled = [rev for rev in r.revisions if any(f.file_name.endswith(WEIGHT_SUFFIXES) for f in rev.files)]
         if revision is None:
-            return max(r.revisions, key=lambda rev: rev.last_modified).snapshot_path
-        return next((rev.snapshot_path for rev in r.revisions if revision in (rev.commit_hash, *rev.refs)), None)
+            return max(pulled, key=lambda rev: rev.last_modified).snapshot_path if pulled else None
+        return next((rev.snapshot_path for rev in pulled if revision in (rev.commit_hash, *rev.refs)), None)
     return None
 
 
