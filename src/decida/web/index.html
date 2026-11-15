@@ -509,7 +509,7 @@ const api=async(path,opts={})=>{
   return j;
 };
 const TASKS=['Billing routing','Technical routing','Sales routing','Positive sentiment','Negative sentiment','Tool gate: destructive','Churn risk high','Churn risk low','Urgency high','Urgency low','Refund: yes','Refund: no','Deadline: yes','Deadline: no'];
-const QUALITY={encoder:['b-spec','specialist · calibrated'],clm:['b-mid','zero-shot · contrastive'],lm:['b-zero','zero-shot · uncalibrated'],remote:['b-mid','hosted · third-party']};
+const QUALITY={encoder:['b-spec','specialist · calibrated'],decision:['b-spec','specialist · calibrated'],clm:['b-mid','zero-shot · contrastive'],lm:['b-zero','zero-shot · uncalibrated'],remote:['b-mid','hosted · third-party']};
 const quality=b=>QUALITY[b]||['b-zero',String(b)]; // an unknown backend must never blank the page
 let DEVICE={kind:'…',name:'',total:0,used:0};
 let models=[];
@@ -634,7 +634,7 @@ function fmtMem(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':mb+' MB'}
 function renderModels(){
   const list=$('#mlist');
   if(!models.length){
-    list.innerHTML=`<div class="empty"><p>No models loaded. Add one:</p><div class="examples" style="justify-content:center;border:0;padding:0">${['helmo/DecidaBERT-large','Qwen/Qwen3-0.6B','helmo/laya:typed-decisions','Contrastive-LM/CLM-v0.1-8B'].map(x=>`<button type="button" data-ex="${x}" data-go="1">${x}</button>`).join('')}</div></div>`;
+    list.innerHTML=`<div class="empty"><p>No models loaded. Add one:</p><div class="examples" style="justify-content:center;border:0;padding:0">${['helmo/DecidaBERT-large-v2','helmo/DecidaBERT-large','Qwen/Qwen3-0.6B','helmo/laya:typed-decisions','Contrastive-LM/CLM-v0.1-8B'].map(x=>`<button type="button" data-ex="${x}" data-go="1">${x}</button>`).join('')}</div></div>`;
     renderDevice();fillPickers();return;
   }
   list.innerHTML=models.map(m=>{
