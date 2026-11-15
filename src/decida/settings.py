@@ -84,6 +84,8 @@ def default_models() -> list[ModelSpec]:
     """The models Decida ships with: copies kept under helmo/ so they can always be downloaded, plus the hosted reference model."""
     return [
         ModelSpec(alias="decidabert", ref="helmo/DecidaBERT-large", note="Decida's own model, trained for typed decisions"),
+        ModelSpec(alias="decidabert-v2", ref="helmo/DecidaBERT-large-v2", note="DecidaBERT-large-v2: 8,192-token context, all questions in one pass"),
+        ModelSpec(alias="decidabert-v1.1", ref="helmo/DecidaBERT-large-v1.1", note="DecidaBERT-large-v1.1: v2's sibling, a different base and recipe"),
         ModelSpec(alias="laya-typed-decisions", ref="helmo/laya:typed-decisions", note="Laya, the typed-decisions checkpoint"),
         ModelSpec(alias="laya", ref="helmo/laya", note="Laya, English checkpoint"),
         ModelSpec(alias="laya-multilingual", ref="helmo/laya:multilingual", note="Laya, multilingual checkpoint"),

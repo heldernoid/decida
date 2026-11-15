@@ -14,12 +14,13 @@ def home(tmp_path, monkeypatch):
 
 def test_the_defaults_are_the_models_we_ship_plus_the_hosted_reference():
     s = S.default_settings()
-    assert [m.alias for m in s.models] == ["decidabert", "laya-typed-decisions", "laya", "laya-multilingual", "qwen",
-                                            "gliner-decide", "gliner-multi-decide", "jev"]
+    assert [m.alias for m in s.models] == ["decidabert", "decidabert-v2", "decidabert-v1.1", "laya-typed-decisions", "laya",
+                                            "laya-multilingual", "qwen", "gliner-decide", "gliner-multi-decide", "jev"]
     refs = {m.alias: m.ref for m in s.models}
     assert refs["decidabert"] == "helmo/DecidaBERT-large" and refs["laya-typed-decisions"] == "helmo/laya:typed-decisions"
     assert refs["laya"] == "helmo/laya" and refs["laya-multilingual"] == "helmo/laya:multilingual" and refs["qwen"] == "helmo/Qwen3-0.6B"
     assert refs["gliner-decide"] == "helmo/GLiNER2.5-Decide" and refs["gliner-multi-decide"] == "helmo/GLiNER2.5-multi-Decide"
+    assert refs["decidabert-v2"] == "helmo/DecidaBERT-large-v2" and refs["decidabert-v1.1"] == "helmo/DecidaBERT-large-v1.1"
     assert [m.alias for m in s.models if m.hosted] == ["jev"]
     assert s.hosted.key_env == "TYPESAFE_API_KEY" and s.server.port == 8000 and s.server.lazy is True
 
@@ -100,8 +101,9 @@ def test_remove_by_alias_or_by_number_and_say_what_exists_otherwise():
     s = S.default_settings()
     assert S.remove_model(s, "qwen").alias == "qwen"
     assert S.remove_model(s, "1").alias == "decidabert"
-    assert [m.alias for m in s.models] == ["laya-typed-decisions", "laya", "laya-multilingual", "gliner-decide", "gliner-multi-decide", "jev"]
-    with pytest.raises(S.SettingsError, match="aliases are: laya-typed-decisions"):
+    assert [m.alias for m in s.models] == ["decidabert-v2", "decidabert-v1.1", "laya-typed-decisions", "laya", "laya-multilingual",
+                                            "gliner-decide", "gliner-multi-decide", "jev"]
+    with pytest.raises(S.SettingsError, match="aliases are: decidabert-v2"):
         S.remove_model(s, "nope")
     with pytest.raises(S.SettingsError):
         S.remove_model(s, "99")
