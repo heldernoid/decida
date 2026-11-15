@@ -121,7 +121,7 @@ def test_a_checkpoint_folder_with_decision_config_is_detected_as_the_decision_ba
 @needs_tokenizer
 def test_loaded_model_answers_every_question_with_a_distribution_and_is_deterministic(checkpoint):
     model = DecisionModel.from_pretrained(str(checkpoint)).eval()
-    a1, enc = model.predict("I was billed twice.", QUESTIONS)
+    a1, encs = model.predict("I was billed twice.", QUESTIONS)
     a2, _ = model.predict("I was billed twice.", QUESTIONS)
     assert list(a1) == list(QUESTIONS)
     assert [len(a1[q].probs) for q in QUESTIONS] == [3, 3, 2]
@@ -129,7 +129,7 @@ def test_loaded_model_answers_every_question_with_a_distribution_and_is_determin
         assert abs(sum(a.probs) - 1) < 1e-5 and 0 < a.confidence <= 1
     assert a1["refund"].confidence >= 0.5
     assert {q: a.probs for q, a in a1.items()} == {q: a.probs for q, a in a2.items()}
-    assert len(enc.input_ids) > 0
+    assert len(encs) == 1 and len(encs[0].input_ids) > 0, "a request that fits is one pass"
 
 
 @needs_tokenizer
@@ -149,16 +149,67 @@ def test_engine_responses_are_well_formed_for_all_fourteen_checks(checkpoint):
     assert res["wiring_ok"] == res["total"] == 14
 
 
+LONG = {f"q{i}": {"type": "score", "instructions": f"How often would article {i} mention the goal? " * 6,
+                  "criteria": ["Never", "Rarely", "Sometimes", "Often", "Always"]} for i in range(60)}
+
+
 @needs_tokenizer
-def test_engine_reports_truncation_and_refuses_questions_that_do_not_fit(checkpoint):
+def test_passes_keep_request_order_and_hold_at_most_five_questions_that_fit_beside_the_state(tokenizer):
+    layout = DecisionLayout(tokenizer, 1024, 256, 96)
+    groups = layout.passes("a short state", LONG)
+    assert [q for g in groups for q in g] == list(LONG)
+    assert len(groups) == 12 and all(len(g) == 5 for g in groups)
+    for g in groups:
+        enc = layout.encode("a short state", {q: LONG[q] for q in g})
+        assert not enc.dropped and not enc.state_cut and enc.options_cut == 0
+
+
+@needs_tokenizer
+def test_passes_share_the_questions_evenly(tokenizer):
+    layout = DecisionLayout(tokenizer, 8192, 256, 96)
+    six = {f"q{i}": {"type": "noul", "instructions": f"Is {i} true?"} for i in range(6)}
+    assert [len(g) for g in layout.passes("s", six)] == [3, 3]
+    twelve = {f"q{i}": {"type": "noul", "instructions": f"Is {i} true?"} for i in range(12)}
+    assert [len(g) for g in layout.passes("s", twelve)] == [4, 4, 4]
+
+
+@needs_tokenizer
+def test_a_pass_gives_the_same_answers_alone_or_padded_in_a_batch(checkpoint):
+    model = DecisionModel.from_pretrained(str(checkpoint)).eval()
+    batched, encs = model.predict("a short state", {k: LONG[k] for k in list(LONG)[:12]})
+    assert len(encs) == 3
+    alone, one = model.predict("a short state", {k: LONG[k] for k in list(LONG)[4:8]})
+    assert len(one) == 1
+    for k in alone:
+        assert max(abs(a - b) for a, b in zip(alone[k].probs, batched[k].probs)) < 1e-4
+
+
+@needs_tokenizer
+def test_engine_reports_truncation(checkpoint):
     engine = DecisionEngine.load(str(checkpoint), device="cpu")
     resp = engine.predict(SystemOneRequest({"model": "tiny", "state": "word " * 3000, "questions": QUESTIONS}))
     assert resp["x_decida"]["truncation"] == {"options_cut": 0, "state_cut": True}
-    assert resp["usage"]["input_tokens"] == 1024
+    assert resp["x_decida"]["passes"] == 1 and resp["usage"]["input_tokens"] == 1024
     assert set(resp["answers"]["team"]["probabilities"]) == {"billing", "tech_support", "sales"}
-    many = {f"q{i}": {"type": "noul", "instructions": "Is this one of many long questions? " * 10} for i in range(60)}
-    with pytest.raises(ValueError, match="do not fit"):
-        engine.predict(SystemOneRequest({"model": "tiny", "state": "s", "questions": many}))
+
+
+@needs_tokenizer
+def test_questions_that_do_not_fit_in_one_pass_are_answered_in_several(checkpoint):
+    engine = DecisionEngine.load(str(checkpoint), device="cpu")
+    resp = engine.predict(SystemOneRequest({"model": "tiny", "state": "a short state", "questions": LONG}))
+    assert resp["x_decida"]["passes"] == 12 and list(resp["answers"]) == list(LONG)
+    assert resp["x_decida"]["truncation"] == {"options_cut": 0, "state_cut": False}
+    alone = engine.predict(SystemOneRequest({"model": "tiny", "state": "a short state", "questions": {"q7": LONG["q7"]}}))
+    assert alone["x_decida"]["passes"] == 1
+
+
+@needs_tokenizer
+def test_a_question_too_long_even_on_its_own_is_refused(checkpoint):
+    engine = DecisionEngine.load(str(checkpoint), device="cpu")
+    huge = {"pick": {"type": "choice", "instructions": "Which one?",
+                     "criteria": {f"option{i}": "a long description " * 20 for i in range(255)}}}
+    with pytest.raises(ValueError, match="too long to fit"):
+        engine.predict(SystemOneRequest({"model": "tiny", "state": "s", "questions": huge}))
 
 
 @needs_tokenizer

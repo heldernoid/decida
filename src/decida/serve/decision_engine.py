@@ -1,7 +1,9 @@
-"""Engine for the DecidaBERT-large-v1.1 / -v2 format (`model/decision_enc.py`): a request's state and all its questions
-are one sequence and one forward pass. Structured like `serve/gliner_engine.py` (one lock, one request at a time),
+"""Engine for the DecidaBERT-large-v1.1 / -v2 format (`model/decision_enc.py`): a request's state and its questions
+are one sequence, read in one forward pass. Structured like `serve/gliner_engine.py` (one lock, one request at a time),
 with `format_answer`/`normalize_criteria` shared with every other local engine so the response shape is the same.
 
+A request of more than five questions, or one whose questions do not fit beside the state, is read in several passes
+(`x_decida.passes`), each with the state and at most five questions, batched on the GPU (see model/decision_enc.py).
 `probabilities` are the model's raw distribution; `confidence` is the top answer's probability after the per-type
 temperature in the checkpoint's `decision_config.json`, so 0.8 means right about 80% of the time on held-out data."""
 import asyncio
@@ -36,14 +38,17 @@ class DecisionEngine:
 
     def _predict_unlocked(self, req: SystemOneRequest) -> dict[str, Any]:
         questions = {qid: {**q, "criteria": normalize_criteria(q["type"], q.get("criteria"))} for qid, q in req.questions.items()}
-        answers, enc = self.model.predict(req.state, questions)
+        answers, encs = self.model.predict(req.state, questions)
         out = {}
         for qid, a in answers.items():
             ans = format_answer(a.type, a.probs, questions[qid].get("criteria"), noul_confidence=False)
             ans["confidence"] = a.confidence
             out[qid] = ans
-        return {"model": req.model, "answers": out, "usage": {"input_tokens": len(enc.input_ids), "output_tokens": 0},
-                "x_decida": {"truncation": {"options_cut": enc.options_cut, "state_cut": enc.state_cut}}}
+        return {"model": req.model, "answers": out,
+                "usage": {"input_tokens": sum(len(e.input_ids) for e in encs), "output_tokens": 0},
+                "x_decida": {"truncation": {"options_cut": sum(e.options_cut for e in encs),
+                                            "state_cut": any(e.state_cut for e in encs)},
+                             "passes": len(encs)}}
 
     def predict(self, req: SystemOneRequest) -> dict[str, Any]:
         return self.predict_sync(req)

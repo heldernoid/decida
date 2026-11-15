@@ -6,6 +6,17 @@ option or level followed by its text, read by the choice or score head. When the
 option texts are shortened first (halving their token cap down to 8) until at least 256 tokens are left for the state,
 and then the end of the state is cut.
 
+A request with more than QUESTIONS_PER_PASS questions, or whose questions do not fit beside the state, is read in
+several passes: each holds the state (up to half the context) and an even share of the questions, and all of them run
+in one padded batch. Every training case had exactly five questions, and answers degrade when more share a pass. On 100
+typed-decisions train cases (500 questions), agreement with the gold label for a case's own five questions, read alone
+or sharing the pass with other cases' questions:
+
+    v2:   1 per pass 81.2%, 3: 82.2%, 5: 83.6%, 5 + 3 others: 80.2%, + 10: 79.6%, + 30: 74.2%, + 60: 67.4%
+    v1.1: 1 per pass 76.6%, 3: 78.6%, 5: 79.2%, 5 + 3 others: 77.4%, + 10: 78.2%, + 30: 70.6%, + 60: 62.2%
+
+A request of up to five questions that fits is one pass, exactly as the models' own inference code reads it.
+
 A checkpoint in this format holds `config.json` (a ModernBERT encoder), `model.safetensors` (encoder plus the heads
 `noul_head`, `choice_head`, `score_head`), the tokenizer, and `decision_config.json` with the token budgets and the
 per-type temperatures that turn the top answer's probability into a calibrated `confidence`. `probabilities` stay raw.
@@ -24,6 +35,8 @@ from torch import nn
 
 MIN_STATE_ROOM = 256   # tokens kept for the state before option texts stop being shortened
 MIN_OPTION_CAP = 8
+QUESTIONS_PER_PASS = 5      # as in training (every typed-decisions case has five); see the module docstring
+BATCH_TOKENS = 32768        # padded tokens per forward when a request is read in several passes
 
 
 def _text(value: Any) -> str:
@@ -117,6 +130,33 @@ class DecisionLayout:
         options_cut = sum(1 for q in qs for o in q["opts"] if len(o) > cap)
         return DecisionEncoded(ids, noul, groups, len(state_ids) < len(st), options_cut, dropped)
 
+    def question_tokens(self, q: dict[str, Any]) -> int:
+        """The tokens one question takes in a sequence at the full option budget (markers and separator included)."""
+        _, texts = options(q)
+        head = min(len(self._ids(" " + question_text(q))), self.head_max)
+        return head + 1 + sum(1 + min(len(self._ids(" " + t)), self.opt_max) for t in texts) + 1
+
+    def passes(self, state: Any, questions: dict[str, dict[str, Any]], per_pass: int = QUESTIONS_PER_PASS) -> list[list[str]]:
+        """The questions in request order, split into groups of at most `per_pass`, as even as possible (twelve:
+        4, 4, 4, not 5, 5, 2), that each fit in one sequence beside the state (the state keeps up to half the
+        context). A question too long for any group gets a group of its own."""
+        budget = self.max_len - 2 - min(len(self._ids(_text(state))), self.max_len // 2)
+        n = len(questions)
+        size = math.ceil(n / math.ceil(n / per_pass)) if n else per_pass
+        groups: list[list[str]] = []
+        cur: list[str] = []
+        used = 0
+        for qid, q in questions.items():
+            cost = self.question_tokens(q)
+            if cur and (used + cost > budget or len(cur) == size):
+                groups.append(cur)
+                cur, used = [], 0
+            cur.append(qid)
+            used += cost
+        if cur:
+            groups.append(cur)
+        return groups
+
 
 def _head(d: int) -> nn.Sequential:
     return nn.Sequential(nn.Linear(d, d), nn.GELU(), nn.LayerNorm(d), nn.Linear(d, 1))
@@ -138,15 +178,45 @@ class DecisionModel(nn.Module):
         self.noul_head, self.choice_head, self.score_head = _head(d), _head(d), _head(d)
 
     @torch.no_grad()
-    def predict(self, state: Any, questions: dict[str, dict[str, Any]]) -> tuple[dict[str, DecisionAnswer], DecisionEncoded]:
-        """Answer every question about `state` in one forward pass."""
-        enc = self.layout.encode(state, questions)
-        if enc.dropped:
-            raise ValueError(f"the questions alone do not fit in {self.layout.max_len} tokens (no room left for: "
-                             f"{', '.join(enc.dropped)}); send fewer or shorter questions")
+    def predict(self, state: Any, questions: dict[str, dict[str, Any]]) -> tuple[dict[str, DecisionAnswer], list[DecisionEncoded]]:
+        """Answer every question about `state`: in one forward pass, or in several (see the module docstring)."""
+        encs: list[DecisionEncoded] = []
+        if len(questions) <= QUESTIONS_PER_PASS:
+            encs = [self.layout.encode(state, questions)]
+        if not encs or encs[0].dropped:
+            encs = [self.layout.encode(state, {qid: questions[qid] for qid in g}) for g in self.layout.passes(state, questions)]
+        dropped = [qid for e in encs for qid in e.dropped]
+        if dropped:
+            raise ValueError(f"a question is too long to fit in {self.layout.max_len} tokens even on its own "
+                             f"({', '.join(dropped)}); shorten its instructions or options")
+        out: dict[str, DecisionAnswer] = {}
+        for batch in self._batches(encs):
+            for e, h in zip(batch, self._encode(batch)):
+                out.update(self._read(e, h))
+        return {qid: out[qid] for qid in questions}, encs
+
+    def _batches(self, encs: list[DecisionEncoded]) -> list[list[DecisionEncoded]]:
+        """Consecutive passes grouped so that each padded batch stays under BATCH_TOKENS."""
+        out: list[list[DecisionEncoded]] = []
+        cur: list[DecisionEncoded] = []
+        for e in encs:
+            if cur and (len(cur) + 1) * max(len(e.input_ids), *(len(c.input_ids) for c in cur)) > BATCH_TOKENS:
+                out.append(cur)
+                cur = []
+            cur.append(e)
+        return out + [cur] if cur else out
+
+    def _encode(self, batch: list[DecisionEncoded]) -> torch.Tensor:
+        """The encoder's hidden states for a batch of passes, right-padded (one pass: no padding at all)."""
         dev = next(self.parameters()).device
-        x = torch.tensor([enc.input_ids], device=dev)
-        h = self.encoder(input_ids=x, attention_mask=torch.ones_like(x)).last_hidden_state[0]
+        n = max(len(e.input_ids) for e in batch)
+        pad = self.layout.tok.pad_token_id
+        x = torch.tensor([e.input_ids + [pad] * (n - len(e.input_ids)) for e in batch], device=dev)
+        mask = torch.tensor([[1] * len(e.input_ids) + [0] * (n - len(e.input_ids)) for e in batch], device=dev)
+        return self.encoder(input_ids=x, attention_mask=mask).last_hidden_state
+
+    def _read(self, enc: DecisionEncoded, h: torch.Tensor) -> dict[str, DecisionAnswer]:
+        """The answer for every marker of one pass, from its hidden states."""
         out: dict[str, DecisionAnswer] = {}
         for pos, qid in enc.noul:
             z = float(self.noul_head(h[pos]).squeeze(-1))
@@ -162,7 +232,7 @@ class DecisionModel(nn.Module):
             pt = np.exp(zt - zt.max())
             pt /= pt.sum()
             out[qid] = DecisionAnswer(qtype, [float(v) for v in p], float(pt.max()))
-        return {qid: out[qid] for qid in questions}, enc
+        return out
 
     @classmethod
     def from_pretrained(cls, path: str) -> DecisionModel:
