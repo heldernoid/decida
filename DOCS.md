@@ -47,6 +47,8 @@ decida setup --path                              # print the settings file locat
 
 Flags can combine in one call (`decida setup --remove jev --add someone/x --default someone/x`) and are applied in that order: reset, then removes, then adds, then default. The interactive menu (no flags) offers the same actions plus port and lazy-loading.
 
+The default list is written once, when the settings file is first created; upgrading Decida never edits the file. So a model added to the defaults later (DecidaBERT-large-v2 and -v1.1 in v0.1.12) has to be added to an older file with `--add`, or the whole list restored with `--reset`.
+
 ### `decida list`
 
 Models in `settings.json` and whether each is downloaded. **No server, no network call**: it reads the local Hugging Face cache directly.

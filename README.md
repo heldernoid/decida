@@ -44,6 +44,14 @@ uv tool upgrade decida                # the latest version from GitHub
 uv tool uninstall decida              # removes the `decida` command and its environment
 ```
 
+An upgrade keeps your `~/.decida/settings.json` as it is, so models added to the defaults later are not served until you
+add them. Settings made before v0.1.12 lack DecidaBERT-large-v2 and -v1.1:
+
+```bash
+decida setup --add decidabert-v2=helmo/DecidaBERT-large-v2 --add decidabert-v1.1=helmo/DecidaBERT-large-v1.1
+decida setup --reset                  # or: the whole current default list (drops models you added yourself)
+```
+
 An upgrade can put the standard `torch` wheel back, so on an AMD GPU repeat the ROCm step above afterwards. Uninstalling
 leaves your data in place: `~/.decida/` holds the settings and downloaded bench datasets (`rm -rf ~/.decida` removes them),
 and model weights stay in the Hugging Face cache (`~/.cache/huggingface/hub`, or under `$HF_HOME`), shared with other
