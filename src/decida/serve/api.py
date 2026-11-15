@@ -11,7 +11,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from decida.runtime.detect import Backend
+from decida.runtime.detect import TAKES_STRUCTURED_INPUT
 from decida.runtime.device import device_info
 from decida.runtime.remote import RemoteError
 from decida.runtime.store import ModelEntry, ModelError, ModelStore
@@ -81,7 +81,7 @@ def resolve(requested: str | None) -> str | None:
 
 async def _answer(entry: ModelEntry, body: dict[str, Any]) -> dict[str, Any]:
     """One request answered by one model, with the timing and model fields every response carries."""
-    if entry.detection.backend != Backend.REMOTE:  # hosted endpoints take structured values as they are
+    if entry.detection.backend not in TAKES_STRUCTURED_INPUT:
         body = coerce_for_local(body)
     req = SystemOneRequest({**body, "model": entry.name})
     start = time.time()

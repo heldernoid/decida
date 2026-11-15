@@ -16,8 +16,15 @@ class Backend:
     CLM = "clm"
     LM = "lm"
     GLINER = "gliner"
+    DECISION = "decision"
     REMOTE = "remote"
     UNSUPPORTED = "unsupported"
+
+
+# Backends that take structured state, instructions and option values as sent. Every other local engine reads text, so the
+# API turns those into compact JSON first (serve/engine.py: coerce_for_local). The decision format writes JSON itself, the
+# way its models were trained (json.dumps with its default separators); compacting it first changes their answers.
+TAKES_STRUCTURED_INPUT = frozenset({Backend.REMOTE, Backend.DECISION})
 
 
 @dataclass
@@ -111,7 +118,7 @@ def _detect_remote(ref: str) -> Detection:
 
 
 def detect(ref: str, revision: str | None = None) -> Detection:
-    """Classify `ref` as encoder / clm / lm / remote / unsupported, with the reason."""
+    """Classify `ref` as encoder / decision / gliner / clm / lm / remote / unsupported, with the reason."""
     if ref.startswith(("http://", "https://")):
         return _detect_remote(ref)
     repo, folder = split_ref(ref)                    # `org/name:folder` picks one checkpoint out of a repo that holds several
@@ -137,6 +144,10 @@ def detect(ref: str, revision: str | None = None) -> Detection:
 
     if "rl_agent_config.json" in names:
         return Detection(Backend.ENCODER, "rl_agent_config.json present (Decida/Laya encoder checkpoint)", ref,
+                         quality_mode="specialist", calibrated=True, license=license_)
+
+    if "decision_config.json" in names and "config.json" in names and "model.safetensors" in names:
+        return Detection(Backend.DECISION, "decision_config.json present (DecidaBERT-v2-format checkpoint: all questions in one pass)", ref,
                          quality_mode="specialist", calibrated=True, license=license_)
 
     if "encoder_config/config.json" in names and read("config.json").get("model_type") == "extractor":
