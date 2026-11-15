@@ -45,7 +45,7 @@ strict = ["src/decida/schema", "src/decida/settings.py", "src/decida/datasets.py
 
 [tool.uv]
 # Only releases at least 14 days old are resolved. Move this date forward when updating the lock file.
-exclude-newer = "2026-09-12T00:00:00Z"
+exclude-newer = "2026-11-01T00:00:00Z"
 
 [build-system]
 requires = ["hatchling"]
