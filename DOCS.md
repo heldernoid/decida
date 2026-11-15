@@ -19,10 +19,10 @@ decida serve -m decidabert=helmo/DecidaBERT-large --port 8010 --device cpu      
 
 - `--model`/`-m` (repeatable): `username/model-id`, `username/model-id:folder`, a local folder, or a hosted URL, optionally `alias=ref`. Leave out entirely to serve the settings.json list. Passing any `--model` **never writes `~/.decida/settings.json`**.
 - `--device`, `--host`, `--port`: override the settings.json values for this run only.
-- `--backend`: force `encoder | lm | clm | gliner | remote` instead of auto-detecting (`decida detect` shows what auto-detection would pick).
+- `--backend`: force `encoder | decision | lm | clm | gliner | remote` instead of auto-detecting (`decida detect` shows what auto-detection would pick).
 - `--dtype`: `auto | float32 | bfloat16 | float16`, for the `lm`/`clm` backends.
 - `--lazy`/`--no-lazy`: load each model on its first request instead of at startup. Default: settings.json's own value when serving that list, off otherwise. `--no-lazy` downloads **and loads** every configured model before the server accepts requests. Only use it if you have the RAM/VRAM for all of them at once, since Decida does not check that a model fits before loading it.
-- `--head-tokens`, `--option-tokens`, `--max-len`: encoder-backend token budgets (0 keeps the model's trained defaults).
+- `--head-tokens`, `--option-tokens`, `--max-len`: encoder-backend token budgets (0 keeps the model's trained defaults). Decision-backend models (DecidaBERT-large-v2 and -v1.1) use the budgets in their own `decision_config.json` (8,192 tokens in all).
 - `--remote-budget-usd`, `--remote-price-per-m`, `--remote-key-env`: hosted-model spend controls (see "Hosted models" below).
 
 **Which model is the default** (used when a request omits `model`, or an MCP tool call): whichever one registers first, which is the first entry in the `--model` list, or the first entry in `settings.json` when none is given. Change it with `decida setup --default <alias>` rather than reordering flags by hand.
@@ -146,6 +146,8 @@ Runs the MCP stdio server. See [MCP.md](MCP.md): it's not an interactive command
 | alias | model | what it is | licence |
 |---|---|---|---|
 | `decidabert` | [helmo/DecidaBERT-large](https://huggingface.co/helmo/DecidaBERT-large) | Decida's own 421M parameter encoder, trained for typed decisions | Apache-2.0 |
+| `decidabert-v2` | [helmo/DecidaBERT-large-v2](https://huggingface.co/helmo/DecidaBERT-large-v2) | its successor: 8,192-token context, every question of a request answered in one forward pass | Apache-2.0 |
+| `decidabert-v1.1` | [helmo/DecidaBERT-large-v1.1](https://huggingface.co/helmo/DecidaBERT-large-v1.1) | v2's sibling: same format, a different base and training recipe | Apache-2.0 |
 | `laya-typed-decisions` | `helmo/laya:typed-decisions` | Laya's typed-decisions checkpoint | Apache-2.0 |
 | `laya` | `helmo/laya` | Laya, English checkpoint | Apache-2.0 |
 | `laya-multilingual` | `helmo/laya:multilingual` | Laya, multilingual checkpoint | Apache-2.0 |
@@ -154,7 +156,7 @@ Runs the MCP stdio server. See [MCP.md](MCP.md): it's not an interactive command
 | `gliner-multi-decide` | [helmo/GLiNER2.5-multi-Decide](https://huggingface.co/helmo/GLiNER2.5-multi-Decide) | a smaller multilingual classifier, read zero-shot | Apache-2.0 |
 | `jev` | TypeSafe Jev (hosted) | a hosted model, used as a reference; see "Hosted models" below | TypeSafe's terms |
 
-`helmo/laya`, `helmo/Qwen3-0.6B`, `helmo/GLiNER2.5-Decide` and `helmo/GLiNER2.5-multi-Decide` are unmodified copies of [convaiinnovations/laya](https://huggingface.co/convaiinnovations/laya), [Qwen/Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B) and Fastino AI's [GLiNER2.5-Decide](https://huggingface.co/fastino/GLiNER2.5-Decide) / [GLiNER2.5-multi-Decide](https://huggingface.co/fastino/GLiNER2.5-multi-Decide), kept as a backup so they can always be downloaded. Each copy has a `MIRROR.md` with the original commit and file hashes. The GLiNER checkpoints are read directly with `transformers`/`torch` (Decida's own prompt layout and classifier head), not through the `gliner2` package. Any Hugging Face model can be added: Decida detects whether it is an encoder checkpoint, a causal language model, a Contrastive-LM checkpoint, or a GLiNER2 classifier, and `username/model-id:folder` picks one checkpoint out of a repository that holds several.
+`helmo/laya`, `helmo/Qwen3-0.6B`, `helmo/GLiNER2.5-Decide` and `helmo/GLiNER2.5-multi-Decide` are unmodified copies of [convaiinnovations/laya](https://huggingface.co/convaiinnovations/laya), [Qwen/Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B) and Fastino AI's [GLiNER2.5-Decide](https://huggingface.co/fastino/GLiNER2.5-Decide) / [GLiNER2.5-multi-Decide](https://huggingface.co/fastino/GLiNER2.5-multi-Decide), kept as a backup so they can always be downloaded. Each copy has a `MIRROR.md` with the original commit and file hashes. The GLiNER checkpoints are read directly with `transformers`/`torch` (Decida's own prompt layout and classifier head), not through the `gliner2` package. Any Hugging Face model can be added: Decida detects whether it is an encoder checkpoint, a decision checkpoint (the DecidaBERT-large-v2 format: a `decision_config.json` beside the weights), a causal language model, a Contrastive-LM checkpoint, or a GLiNER2 classifier, and `username/model-id:folder` picks one checkpoint out of a repository that holds several.
 
 ## Using the REST API
 
