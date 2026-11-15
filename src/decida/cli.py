@@ -40,7 +40,7 @@ def serve_cmd(models: Annotated[list[str] | None, typer.Option("--model", "-m", 
               device: str = typer.Option(None, help="Device to run on (cuda/mps/cpu/auto); default from settings"),
               host: str = typer.Option(None, help="Host to bind to; default from settings"),
               port: int = typer.Option(None, help="Port to bind to; default from settings"),
-              backend: str = typer.Option("", help="Force a backend (encoder | lm | clm | gliner) instead of auto-detecting"),
+              backend: str = typer.Option("", help="Force a backend (encoder | decision | lm | clm | gliner) instead of auto-detecting"),
               dtype: str = typer.Option("auto", help="lm/clm backends: auto | float32 | bfloat16 | float16"),
               lazy: bool = typer.Option(None, "--lazy/--no-lazy", help="Load each model on its first request instead of at startup; default from settings when serving the settings list, otherwise off"),
               head_tokens: int = typer.Option(None, help="encoder backend: token budget shared by the instructions and ALL options (0 keeps the trained 192); default from settings"),
@@ -55,8 +55,8 @@ def serve_cmd(models: Annotated[list[str] | None, typer.Option("--model", "-m", 
     import uvicorn
 
     from decida import settings as st
-    if backend and backend not in ("encoder", "lm", "clm", "gliner", "remote"):
-        raise typer.BadParameter("backend must be encoder, lm, clm, gliner or remote")
+    if backend and backend not in ("encoder", "decision", "lm", "clm", "gliner", "remote"):
+        raise typer.BadParameter("backend must be encoder, decision, lm, clm, gliner or remote")
     models = models or []
     cfg, created = _load_settings(create=not models)   # an explicit -m never writes a settings file
     if models:
@@ -455,17 +455,27 @@ def predict_cmd(model_dir: str = typer.Option(..., "--model", help="Model folder
                 state_file: str = typer.Option(..., "--state", help="Path to JSON file containing state"),
                 questions_file: str = typer.Option(..., "--questions", help="Path to JSON file containing questions map")):
     """Run a single prediction locally."""
+    import asyncio
     import json
     from pathlib import Path
 
-    from decida.runtime.refs import local_dir
-    from decida.serve.engine import Engine, SystemOneRequest
+    from decida.runtime.detect import TAKES_STRUCTURED_INPUT
+    from decida.runtime.store import ModelStore
+    from decida.serve.engine import SystemOneRequest, coerce_for_local
 
     state = json.loads(Path(state_file).read_text(encoding="utf-8"))
     questions = json.loads(Path(questions_file).read_text(encoding="utf-8"))
-    engine = Engine.load(local_dir(model_dir))     # a folder, or a Hub id such as helmo/DecidaBERT-large
-    resp = engine.predict(SystemOneRequest({"model": "local", "state": state, "questions": questions}))
-    typer.echo(json.dumps(resp, indent=2))
+
+    async def go() -> dict:
+        store = ModelStore()
+        entry = store.add(model_dir)                # a folder, or a Hub id such as helmo/DecidaBERT-large; the backend is detected
+        await store.ensure_loaded(entry.name)
+        body = {"model": entry.name, "state": state, "questions": questions}
+        if entry.detection.backend not in TAKES_STRUCTURED_INPUT:
+            body = coerce_for_local(body)
+        return await entry.engine.predict_async(SystemOneRequest(body))
+
+    typer.echo(json.dumps(asyncio.run(go()), indent=2))
 
 @app.command("mcp")
 def mcp_cmd():
